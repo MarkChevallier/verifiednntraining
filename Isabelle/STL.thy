@@ -18,8 +18,9 @@ fun valid_constraint :: "real \<Rightarrow> 'v::real_vector constraint \<Rightar
     \<and> valid_constraint (l-y) c2))"
 
 lemma vc_l:
-  shows "valid_constraint l c \<longrightarrow> l\<ge>0"
-proof (induct c)
+  assumes "valid_constraint l c"
+  shows "l\<ge>0"
+proof (insert assms, induct c)
   case (cMu f r)
   then show ?case 
     using valid_constraint.simps(1) 
