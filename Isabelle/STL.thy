@@ -105,6 +105,17 @@ lemma cTrue_eval: "eval t l cTrue = (l\<ge>0)"
   using cTrue_def eval.simps(1) zero_less_one cTrue_vc
   by metis
 
+definition cOr :: "'v::real_vector constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+"cOr c1 c2 = cNot (cAnd (cNot c1) (cNot c2))"
+
+lemma cOr_vc:"valid_constraint l (cOr c1 c2) = (valid_constraint l c1 \<and> valid_constraint l c2)"
+  using valid_constraint.simps(2,3) cOr_def
+  by metis
+
+lemma cOr_eval:"eval t l (cOr c1 c2) = (valid_constraint l (cOr c1 c2) \<and> (eval t l c1 \<or> eval t l c2))"
+  using valid_constraint.simps(2,3) cOr_def eval.simps(2,3)
+  by metis
+
 definition cEventually :: "real \<Rightarrow> real \<Rightarrow> 'v::real_vector constraint \<Rightarrow> 'v constraint" where
 "cEventually x y c = cUntil x y cTrue c"
 
