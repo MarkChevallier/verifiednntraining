@@ -87,7 +87,7 @@ fun eval :: "(real \<Rightarrow> 'v::real_vector) \<Rightarrow> real \<Rightarro
   ((eval t l c1) \<and> (eval t l c2)))"
 | "eval t l (cUntil x y c1 c2) = 
   (valid_constraint l (cUntil x y c1 c2) \<and> (\<exists>t'\<ge>x. t'\<le>y \<and> eval (\<lambda>r. t (r+t')) (l-t') c2 
-    \<and> (\<forall>t''. t''\<ge>x\<and>t''\<le>t' \<longrightarrow> eval (\<lambda>r. t (r+t'')) (l-t'') c1)))"
+    \<and> (\<forall>t''. t''\<ge>0\<and>t''\<le>t' \<longrightarrow> eval (\<lambda>r. t (r+t'')) (l-t'') c1)))"
 
 lemma eval_vc:
   assumes "eval t l c"
@@ -139,7 +139,7 @@ proof -
     by metis
   then have 1:"eval t l (cEventually x y c) = (valid_constraint l (cEventually x y c) 
       \<and> (\<exists>t'\<ge>x. t'\<le>y \<and> eval (\<lambda>r. t (r+t')) (l-t') c
-      \<and> (\<forall>t''. t''\<ge>x\<and>t''\<le>t' \<longrightarrow> eval (\<lambda>r. t (r+t'')) (l-t'') cTrue)))"
+      \<and> (\<forall>t''. t''\<ge>0\<and>t''\<le>t' \<longrightarrow> eval (\<lambda>r. t (r+t'')) (l-t'') cTrue)))"
     using eval.simps(4) cEventually_vc' cEventually_vc valid_constraint.simps(4)
     by blast
   then show ?thesis
@@ -147,7 +147,7 @@ proof -
     have 2:"eval t l (cEventually x y c) = (valid_constraint l (cEventually x y c)
     \<and> (\<exists>t'\<ge>x. t'\<le>y \<and> eval (\<lambda>r. t (r+t')) (l-t') c
     \<and> t'\<le>l))"
-      using 1 cTrue_eval valid_constraint.simps(4) cTrue_def
+      using 1 cTrue_eval valid_constraint.simps(4) cTrue_def cEventually_vc
       by (smt (verit, ccfv_threshold))
     then have "\<forall>t'. eval (\<lambda>r. t (r+t')) (l-t') c \<longrightarrow> l-t'\<ge>0"
       using eval_vc vc_l
