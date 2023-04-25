@@ -234,10 +234,4 @@ proof -
     by blast
 qed
 
-fun robustSTL :: "real \<Rightarrow> (real \<Rightarrow> 'v::real_vector) \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> real" where
-"robustSTL \<gamma> t l (cMu f r) = (f (t 0)) - r"
-| "robustSTL \<gamma> t l (cNot c) = - (robustSTL \<gamma> t l c)"
-| "robustSTL \<gamma> t l (cAnd c1 c2) = Max_gamma_comp \<gamma> (robustSTL \<gamma> t l c1) (robustSTL \<gamma> t l c2)"
-| "robustSTL \<gamma> t l (cAnd c1 c2) = Max_gamma_comp \<gamma> (robustSTL \<gamma> t l c1) (robustSTL \<gamma> t l c2)"
-
 end
