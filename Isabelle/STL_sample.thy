@@ -56,5 +56,28 @@ fun evals :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \
 | "evals t (cUntil x y c1 c2) = (\<exists>t'\<ge>x. t'\<le>y \<and> (\<exists>n<length t. fst (t!n) = t') \<and> evals (signal_shift t t') c2 
     \<and> (\<forall>t''. t''\<ge>0\<and>t''\<le>t'\<and> (\<exists>n<length t. fst (t!n) = t'') \<longrightarrow> evals (signal_shift t t'') c1))"
 
+lemma cTrue_evals:"evals t cTrue"
+  using cTrue_def evals.simps(1) zero_less_one
+  by metis
+
+lemma cOr_evals:"evals t (cOr c1 c2) = (evals t c1 \<or> evals t c2)"
+  using cOr_def evals.simps(2,3)
+  by metis
+
+lemma cEventually_evals: "evals t (cEventually x y c) =
+    (\<exists>t'\<ge>x. t'\<le>y \<and> (\<exists>n<length t. fst (t!n) = t') \<and> evals (signal_shift t t') c)"
+  using evals.simps(4) cTrue_evals cEventually_def
+  by metis
+
+lemma cAlways_evals: "evals t (cAlways x y c) =
+  (\<forall>t'. t'\<ge>x\<and>t'\<le>y\<and> (\<exists>n<length t. fst (t!n) = t') \<longrightarrow> evals (signal_shift t t') c)"
+proof -
+  have "evals t (cAlways x y c) = (\<not>(\<exists>t'\<ge>x. t'\<le>y \<and> (\<exists>n<length t. fst (t!n) = t') \<and> evals (signal_shift t t') (cNot c)))"
+    using cEventually_evals cAlways_def evals.simps(2)
+    by metis
+  then show ?thesis
+    using evals.simps(2)
+    by blast
+qed
 
 end

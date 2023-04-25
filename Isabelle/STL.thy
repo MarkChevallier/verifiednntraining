@@ -224,7 +224,6 @@ proof -
 qed
 
 lemma cAlways_eval:"eval t l (cAlways x y c) = (\<forall>t'\<ge>x. t'\<le>y \<and> t'\<le>l \<longrightarrow> eval (\<lambda>r. t (r+t')) (l-t') c)"
-  using cAlways_def eval.simps(2) cEventually_eval
 proof -
   have "eval t l (cAlways x y c) = (\<not>(\<exists>t'\<ge>x. t'\<le>y \<and> t'\<le>l \<and> eval (\<lambda>r. t (r+t')) (l-t') (cNot c)))"
     using cEventually_eval cAlways_def eval.simps(2)
