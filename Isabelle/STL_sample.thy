@@ -13,6 +13,37 @@ definition find_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real
 definition signal_shift :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> (real \<times> 'v::real_vector) list" where
 "signal_shift xs r = filter (\<lambda>x. fst x\<ge>0) (map (\<lambda>x. (fst x - r, snd x)) xs)"
 
+definition next_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> real" where
+"next_time xs r = Min (set (filter (\<lambda>x. x>r) (map fst xs)))"
+
+lemma next_time_0_find:
+  fixes xs :: "(real \<times> 'v::real_vector) list"
+  assumes "length xs > 1" "valid_signal xs"
+  shows "find (\<lambda>x. fst x = next_time xs 0) xs \<noteq> None"
+proof -
+  have 0:"distinct (map fst xs) \<and> (\<forall>n<length (map fst xs). (map fst xs)!n \<ge> 0)
+    \<and> (\<exists>n<length (map fst xs). (map fst xs)!n = 0) \<and> length (map fst xs) > 1"
+    using assms length_map nth_map valid_signal_def
+    by metis
+  then have "\<exists>n<length (map fst xs). (map fst xs)!n > 0"
+    using distinct_conv_nth leI nat_less_le nle_le not_gr_zero zero_neq_one
+    by metis
+  then have "(set (filter (\<lambda>x. x>0) (map fst xs))) \<noteq> {} \<and> finite (set (filter (\<lambda>x. x>0) (map fst xs)))"
+    by force
+  then have "next_time xs 0 \<in> (set (filter (\<lambda>x. x>0) (map fst xs)))"
+    using next_time_def Min_in
+    by metis
+  then have "\<exists>n<length (filter (\<lambda>x. x>0) (map fst xs)). (filter (\<lambda>x. x>0) (map fst xs))!n = next_time xs 0"
+    using in_set_conv_nth 
+    by metis
+  then show ?thesis 
+    using filter_set find_None_iff in_set_conv_nth length_map member_filter nth_map nth_mem
+    by (smt (verit))
+qed
+
+definition shorten_signal :: "(real \<times> 'v::real_vector) list \<Rightarrow> (real \<times> 'v::real_vector) list" where
+"shorten_signal xs = signal_shift xs (next_time xs 0)"
+
 value "find_time [(0,a),(1,b),(1.5,c)] 1.5"
 value "signal_shift [(0,a),(1,b),(1.5,c)] 1.0"
 
@@ -48,6 +79,18 @@ proof -
       \<open>\<forall>n<length (signal_shift xs r). fst ((signal_shift xs r)!n) \<ge> 0\<close>
     by blast
 qed
+
+lemma shorten_signal_shortens:
+  fixes xs :: "(real \<times> 'v::real_vector) list"
+  assumes "length xs > 1" "valid_signal xs"
+  shows "length (shorten_signal xs) + 1 = length xs"
+proof -
+  
+lemma shorten_signal_valid:
+  fixes xs :: "(real \<times> 'v::real_vector) list"
+  assumes "valid_signal xs"
+  shows "valid_signal (shorten_signal xs)"
+proof -
 
 fun evals :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
 "evals t (cMu f r) = (f (find_time t 0) > r)"
