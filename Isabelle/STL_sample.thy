@@ -127,6 +127,11 @@ definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real \<times
   (find_index (\<lambda>r. r>y) (map fst (drop (find_index (\<lambda>r. r\<ge>x) (map fst t)) t)))
   (drop (find_index (\<lambda>r. r\<ge>x) (map fst t)) t)"
 
+lemma clip_timeline_length:"length (clip_timeline x y xs) \<le> length xs"
+  using clip_timeline_def length_rev length_take linorder_not_le min_less_iff_conj 
+    order_less_imp_le rev_drop
+  by (metis (no_types, lifting))
+
 value "clip_timeline 13.5 5 [(1,a),(2,b),(8,c),(12,d),(15,e)]"
 
 function robust :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
@@ -141,10 +146,10 @@ function robust :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constr
       (Max_gamma_comp \<gamma> 
         (robust (clip_timeline x y t) c1 \<gamma>)
         (robust (map (\<lambda>p. (fst p - (fst ((clip_timeline x y t)!1)), snd p)) (drop 1 (clip_timeline x y t))) (cUntil 0 (y-x) c1 c2) \<gamma>)))))"
-            apply pat_completeness
-  by simp+
+  by (pat_completeness, simp+)
 termination 
-  sledgehammer
+  apply simp+
+  by (size_change)
   
 
 (*
