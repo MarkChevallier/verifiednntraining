@@ -1,51 +1,38 @@
 theory STL_sample
-  imports STL
+  imports STL "List-Index.List_Index"
 
 begin
 
 definition valid_signal :: "(real \<times> 'v::real_vector) list \<Rightarrow> bool" where
 "valid_signal xs = (distinct (map fst xs) \<and> (\<forall>n<length xs. fst (xs!n) \<ge> 0)
-  \<and> (\<exists>n<length xs. fst (xs!n) = 0))"
+  \<and> fst (xs!0) = 0 \<and> sorted (map fst xs))"
 
 definition find_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> 'v" where
 "find_time xs r = (if (find (\<lambda>x. fst x = r) xs = None) then 0 else (snd (the (find (\<lambda>x. fst x = r) xs))))"
 
 definition signal_shift :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> (real \<times> 'v::real_vector) list" where
-"signal_shift xs r = filter (\<lambda>x. fst x\<ge>0) (map (\<lambda>x. (fst x - r, snd x)) xs)"
-
-definition next_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> real" where
-"next_time xs r = Min (set (filter (\<lambda>x. x>r) (map fst xs)))"
-
-lemma next_time_0_find:
-  fixes xs :: "(real \<times> 'v::real_vector) list"
-  assumes "length xs > 1" "valid_signal xs"
-  shows "find (\<lambda>x. fst x = next_time xs 0) xs \<noteq> None"
-proof -
-  have 0:"distinct (map fst xs) \<and> (\<forall>n<length (map fst xs). (map fst xs)!n \<ge> 0)
-    \<and> (\<exists>n<length (map fst xs). (map fst xs)!n = 0) \<and> length (map fst xs) > 1"
-    using assms length_map nth_map valid_signal_def
-    by metis
-  then have "\<exists>n<length (map fst xs). (map fst xs)!n > 0"
-    using distinct_conv_nth leI nat_less_le nle_le not_gr_zero zero_neq_one
-    by metis
-  then have "(set (filter (\<lambda>x. x>0) (map fst xs))) \<noteq> {} \<and> finite (set (filter (\<lambda>x. x>0) (map fst xs)))"
-    by force
-  then have "next_time xs 0 \<in> (set (filter (\<lambda>x. x>0) (map fst xs)))"
-    using next_time_def Min_in
-    by metis
-  then have "\<exists>n<length (filter (\<lambda>x. x>0) (map fst xs)). (filter (\<lambda>x. x>0) (map fst xs))!n = next_time xs 0"
-    using in_set_conv_nth 
-    by metis
-  then show ?thesis 
-    using filter_set find_None_iff in_set_conv_nth length_map member_filter nth_map nth_mem
-    by (smt (verit))
-qed
-
-definition shorten_signal :: "(real \<times> 'v::real_vector) list \<Rightarrow> (real \<times> 'v::real_vector) list" where
-"shorten_signal xs = signal_shift xs (next_time xs 0)"
+"signal_shift xs r = map (\<lambda>x. (fst x - r, snd x)) (drop (index (map fst xs) r) xs)"
 
 value "find_time [(0,a),(1,b),(1.5,c)] 1.5"
 value "signal_shift [(0,a),(1,b),(1.5,c)] 1.0"
+value "signal_shift [(0,a),(0.5,b),(1.5,c),(21,d)] ((map fst [(0,a),(0.5,b),(1.5,c)])!1)"
+
+lemma drop_index_r:
+  fixes xs :: "(real \<times> 'v::real_vector) list" and r :: real
+  assumes "valid_signal xs" "\<exists>n<length xs. fst (xs!n) = r"
+  shows "\<forall>n<length (drop (index (map fst xs) r) xs). fst ((drop (index (map fst xs) r) xs)!n) \<ge> r"
+proof -
+  have "sorted (map fst xs)"
+    using valid_signal_def assms(1)
+    by blast
+  then have "\<forall>n\<ge>(index (map fst xs) r). n<length (map fst xs) \<longrightarrow> (map fst xs)!n \<ge> r"
+    using dual_order.strict_trans2 index_less_size_conv nth_index sorted_nth_mono
+    by metis
+  then have "\<forall>n<length (drop (index (map fst xs) r) xs). (map fst (drop (index (map fst xs) r) xs))!n \<ge> r"
+    by auto
+  then show "\<forall>n<length (drop (index (map fst xs) r) xs). fst ((drop (index (map fst xs) r) xs)!n) \<ge> r"
+    by auto
+qed
 
 lemma signal_shift_valid:
   fixes xs :: "(real \<times> 'v::real_vector) list" and r :: real
@@ -58,39 +45,51 @@ proof -
     using assms(1) distinct_conv_nth length_map nth_map valid_signal_def
     by (smt (verit, ccfv_threshold))
   then have "distinct (map fst (signal_shift xs r))" 
-    using signal_shift_def 0 distinct_map_filter map_eq_conv
-    by (smt (verit, ccfv_threshold))
-  then have "\<forall>n<length (signal_shift xs r). fst ((signal_shift xs r)!n) \<ge> 0"
-    using signal_shift_def mem_Collect_eq nth_mem set_filter
-    by (smt (verit, ccfv_threshold))
-  then have "\<exists>x\<in>set xs. fst x = r" 
-    using assms(2)
-    by auto
-  then have "\<exists>x\<in>set(signal_shift xs r). fst x = 0"
-    using signal_shift_def image_eqI list.set_map mem_Collect_eq prod.sel(1) set_filter
+    using signal_shift_def 0 distinct_drop distinct_map distinct_conv_nth 
+      drop_map length_map nth_map
     by (smt (verit, best))
-  then have "0\<in>set(map fst (signal_shift xs r))"
-    by force
-  then have "\<exists>n<length (signal_shift xs r). fst ((signal_shift xs r)!n) = 0"
-    using \<open>\<exists>x\<in>set (signal_shift xs r). fst x = 0\<close> in_set_conv_nth
+  have "\<forall>n<length xs. (\<lambda>x. fst x \<ge> 0) (xs!n)"
+    using valid_signal_def assms(1)
+    by auto
+  then have "\<forall>n<length (signal_shift xs r). fst ((signal_shift xs r)!n) \<ge> 0"
+    using signal_shift_def in_set_conv_nth in_set_dropD drop_index_r
+      assms(1) assms(2) length_map nth_map prod.sel(1)
+    by (smt (verit, ccfv_threshold))
+  have "fst ((signal_shift xs r)!0) = 0" 
+    using 0 add.right_neutral assms(1) assms(2) drop_map index_nth_id length_map 
+      nat_less_le nth_drop nth_map signal_shift_def valid_signal_def
+    by (smt (verit, ccfv_threshold))
+  then have "sorted (drop (index (map fst xs) r) (map fst xs))"
+    using assms sorted_drop valid_signal_def 
+    by blast
+  then have 1:"sorted (map fst (drop (index (map fst xs) r) xs))"
+    using drop_map
     by metis
+  then have "sorted (map (\<lambda>x. fst x - r) (drop (index (map fst xs) r) xs))"
+  proof -
+    have "\<forall>i j. i\<le>j \<longrightarrow> j < length (drop (index (map fst xs) r) xs) 
+        \<longrightarrow> fst ((drop (index (map fst xs) r) xs)!i) 
+          \<le> fst ((drop (index (map fst xs) r) xs)!j)"
+      using 1 sorted_iff_nth_mono 
+      by force
+    then have "\<forall>i j. i\<le>j \<longrightarrow> j < length (drop (index (map fst xs) r) xs) 
+        \<longrightarrow> fst ((drop (index (map fst xs) r) xs)!i) - r 
+          \<le> fst ((drop (index (map fst xs) r) xs)!j) - r"
+      by force
+    then show ?thesis
+      using dual_order.strict_trans2 length_map nth_map order_less_imp_le 
+        sorted_iff_nth_mono_less
+      by (smt (verit, del_insts))
+  qed
+  then have "sorted (map fst (signal_shift xs r))"
+    using signal_shift_def 0 drop_map map_eq_conv
+    by (smt (verit, best))
   then show ?thesis
     using valid_signal_def \<open>distinct (map fst (signal_shift xs r))\<close> 
       \<open>\<forall>n<length (signal_shift xs r). fst ((signal_shift xs r)!n) \<ge> 0\<close>
+      \<open>fst (signal_shift xs r ! 0) = 0\<close> 
     by blast
 qed
-
-lemma shorten_signal_shortens:
-  fixes xs :: "(real \<times> 'v::real_vector) list"
-  assumes "length xs > 1" "valid_signal xs"
-  shows "length (shorten_signal xs) + 1 = length xs"
-proof -
-  
-lemma shorten_signal_valid:
-  fixes xs :: "(real \<times> 'v::real_vector) list"
-  assumes "valid_signal xs"
-  shows "valid_signal (shorten_signal xs)"
-proof -
 
 fun evals :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
 "evals t (cMu f r) = (f (find_time t 0) > r)"
@@ -122,5 +121,36 @@ proof -
     using evals.simps(2)
     by blast
 qed
+
+definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> (real \<times> 'v) list" where
+"clip_timeline x y t = take 
+  (find_index (\<lambda>r. r>y) (map fst (drop (find_index (\<lambda>r. r\<ge>x) (map fst t)) t)))
+  (drop (find_index (\<lambda>r. r\<ge>x) (map fst t)) t)"
+
+value "clip_timeline 13.5 5 [(1,a),(2,b),(8,c),(12,d),(15,e)]"
+
+function robust :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
+"robust t (cMu f r) \<gamma> = f (find_time t 0) - r"
+| "robust t (cNot c) \<gamma> = -(robust t c \<gamma>)"
+| "robust t (cAnd c1 c2) \<gamma> = Max_gamma_comp \<gamma> (robust t c1 \<gamma>) (robust t c2 \<gamma>)"
+| "robust t (cUntil x y c1 c2) \<gamma> = (if length (clip_timeline x y t) = 0 then -1 else 
+    (if length (clip_timeline x y t) = 1 then
+      (robust (clip_timeline x y t) c2 \<gamma>) else
+    (Min_gamma_comp \<gamma>
+      (robust (clip_timeline x y t) c2 \<gamma>)
+      (Max_gamma_comp \<gamma> 
+        (robust (clip_timeline x y t) c1 \<gamma>)
+        (robust (map (\<lambda>p. (fst p - (fst ((clip_timeline x y t)!1)), snd p)) (drop 1 (clip_timeline x y t))) (cUntil 0 (y-x) c1 c2) \<gamma>)))))"
+            apply pat_completeness
+  by simp+
+termination 
+  sledgehammer
+  
+
+(*
+Min_gamma_comp \<gamma> (L c2 (s # ss) \<gamma>) 
+    (Max_gamma_comp \<gamma> (L c1 (s # ss) \<gamma>) (if ss = [] then 0 
+      else (L (Until c1 c2) ss \<gamma>)))"
+*)
 
 end
