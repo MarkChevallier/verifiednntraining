@@ -130,7 +130,8 @@ lemma clip_timeline_length:"length (clip_timeline x xs) \<le> length xs"
     order_less_imp_le rev_drop signal_shift_def length_map
   by (metis (no_types, lifting))
 
-value "clip_timeline 8 [(1,a),(2,b),(8,c),(12,d),(15,e)]"
+value "clip_timeline 2 [(0::real,a),(2,b),(8,c),(12,d),(15,e)]"
+value "length (clip_timeline (fst ([(0,a)]!1)) [(0,a)])"
 
 function robust :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
 "robust t (cMu f r) \<gamma> = f (find_time t 0) - r"
@@ -142,9 +143,11 @@ function robust :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constr
       (Min_gamma_comp \<gamma> 
         (robust (clip_timeline x t) c1 \<gamma>)
         (robust (clip_timeline (fst (t!1)) t) (cUntil 0 (y-x-(fst (t!1))) c1 c2) \<gamma>))))"
-  by (pat_completeness, simp+)
+  by pat_completeness auto
 termination 
-  apply simp+
+  by (relation "measures [(\<lambda>(t,_,_). length t)]") 
+  
+  
   
   
   
