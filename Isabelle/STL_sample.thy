@@ -153,12 +153,11 @@ function robust :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constr
         (robust (clip_timeline x t) c2 \<gamma>)
         (Min_gamma_comp \<gamma> 
           (robust (clip_timeline x t) c1 \<gamma>)
-          (robust (drop 1 (map (\<lambda>z. (fst z - fst ((clip_timeline x t)!1), snd z)) (clip_timeline x t))) (cUntil 0 (y-x-(fst (t!1))) c1 c2) \<gamma>)))))"
+          (robust (drop 1 (map (\<lambda>z. (fst z - fst ((clip_timeline x t)!1), snd z)) (clip_timeline x t))) (cUntil 0 (y-x-fst ((clip_timeline x t)!1)) c1 c2) \<gamma>)))))"
   by pat_completeness auto
 termination 
   apply (relation 
-      "Wellfounded.measure (\<lambda>(t::(real \<times> ('v::real_vector)) list,c::'v constraint,\<gamma>::real). 
-        size c + length t)")
+      "Wellfounded.measure (\<lambda>(t,c,\<gamma>). size c + length t)")
          apply simp+
   apply (simp add: constraint.size_neq zero_less_iff_neq_zero)
     apply (simp add: clip_timeline_length less_Suc_eq_le trans_le_add2)
@@ -203,7 +202,7 @@ proof -
        \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<Longrightarrow>
        length (clip_timeline x t) \<noteq> 1 \<Longrightarrow>
        ((drop 1 (map (\<lambda>z. (fst z - fst (clip_timeline x t ! 1), snd z)) (clip_timeline x t)),
-         cUntil 0 (y - x - fst (t ! 1)) c1 c2, \<gamma>),
+         cUntil 0 (y - x - fst ((clip_timeline x t)!1)) c1 c2, \<gamma>),
         t, cUntil x y c1 c2, \<gamma>)
        \<in> Wellfounded.measure (\<lambda>(t, c, \<gamma>). size c + length t)"
     by auto
