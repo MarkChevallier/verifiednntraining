@@ -130,32 +130,83 @@ lemma clip_timeline_length:"length (clip_timeline x xs) \<le> length xs"
     order_less_imp_le rev_drop signal_shift_def length_map
   by (metis (no_types, lifting))
 
+lemma Until_drop_length:
+  assumes "length t > 1"
+  shows "length (drop 1 (map (\<lambda>x. (fst x - fst (t!1), snd x)) t)) < length t"
+  using assms
+  by simp
+
 value "clip_timeline 2 [(0::real,a),(2,b),(8,c),(12,d),(15,e)]"
 value "length (clip_timeline (fst ([(0,a)]!1)) [(0,a)])"
+value "((clip_timeline x t, c1, \<gamma>), t, cUntil x y c1 c2, \<gamma>)
+       \<in> Wellfounded.measure (\<lambda>(t, c, _). size c + length t)"
 
 function robust :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
 "robust t (cMu f r) \<gamma> = f (find_time t 0) - r"
 | "robust t (cNot c) \<gamma> = -(robust t c \<gamma>)"
 | "robust t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust t c1 \<gamma>) (robust t c2 \<gamma>)"
 | "robust t (cUntil x y c1 c2) \<gamma> = (if length (clip_timeline x t) = 0 \<or> y<0 then -1 else 
-    (Max_gamma_comp \<gamma>
+    (if length (clip_timeline x t) = 1 then
       (robust (clip_timeline x t) c2 \<gamma>)
-      (Min_gamma_comp \<gamma> 
-        (robust (clip_timeline x t) c1 \<gamma>)
-        (robust (clip_timeline (fst (t!1)) t) (cUntil 0 (y-x-(fst (t!1))) c1 c2) \<gamma>))))"
+    else
+      (Max_gamma_comp \<gamma>
+        (robust (clip_timeline x t) c2 \<gamma>)
+        (Min_gamma_comp \<gamma> 
+          (robust (clip_timeline x t) c1 \<gamma>)
+          (robust (drop 1 (map (\<lambda>z. (fst z - fst ((clip_timeline x t)!1), snd z)) (clip_timeline x t))) (cUntil 0 (y-x-(fst (t!1))) c1 c2) \<gamma>)))))"
   by pat_completeness auto
 termination 
-  by (relation "measures [(\<lambda>(t,_,_). length t)]") 
-  
-  
-  
-  
-  
-
-(*
-Min_gamma_comp \<gamma> (L c2 (s # ss) \<gamma>) 
-    (Max_gamma_comp \<gamma> (L c1 (s # ss) \<gamma>) (if ss = [] then 0 
-      else (L (Until c1 c2) ss \<gamma>)))"
-*)
+  apply (relation 
+      "Wellfounded.measure (\<lambda>(t::(real \<times> ('v::real_vector)) list,c::'v constraint,\<gamma>::real). 
+        size c + length t)")
+         apply simp+
+  apply (simp add: constraint.size_neq zero_less_iff_neq_zero)
+    apply (simp add: clip_timeline_length less_Suc_eq_le trans_le_add2)
+proof -
+  have 1:"\<And>x y \<gamma> t c1 c2.
+   \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<longrightarrow>
+    length (clip_timeline x t) \<noteq> 1 \<longrightarrow>
+   length (clip_timeline x t)\<le> length t"
+    using clip_timeline_length 
+    by blast
+  then have "\<And>x y \<gamma> t c1 c2.
+   \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<longrightarrow>
+    length (clip_timeline x t) \<noteq> 1 \<longrightarrow>
+    size c1 < size (cUntil x y c1 c2)"
+    by force
+  then have "\<And>x y \<gamma> t c1 c2.
+   \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<longrightarrow>
+    length (clip_timeline x t) \<noteq> 1 \<longrightarrow>
+    size c1 + length (clip_timeline x t) < size (cUntil x y c1 c2) + length t"
+    using 1 
+    by fastforce
+  then have "\<And>x y \<gamma> t c1 c2.
+   \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<longrightarrow>
+    length (clip_timeline x t) \<noteq> 1 \<longrightarrow>
+    ((clip_timeline x t, c1, \<gamma>), t, cUntil x y c1 c2, \<gamma>)
+   \<in> Wellfounded.measure (\<lambda>(t, c, \<gamma>). size c + length t)"
+    by simp
+  then show "\<And>x y \<gamma> t c1 c2.
+   \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<Longrightarrow>
+    length (clip_timeline x t) \<noteq> 1 \<Longrightarrow>
+       ((clip_timeline x t, c1, \<gamma>), t, cUntil x y c1 c2, \<gamma>)
+       \<in> Wellfounded.measure
+           (\<lambda>(t, c, \<gamma>). size c + length t)"
+    by auto
+  then have "\<And>t x y c1 c2 \<gamma>.
+       \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<Longrightarrow>
+       length (clip_timeline x t) \<noteq> 1 \<Longrightarrow>
+    length (drop 1 (map (\<lambda>z. (fst z - fst (clip_timeline x t ! 1), snd z)) (clip_timeline x t))) < length t"
+    using Until_drop_length add_diff_cancel_right' add_diff_inverse_nat cancel_ab_semigroup_add_class.diff_right_commute clip_timeline_length diff_is_0_eq' diff_le_self diff_zero length_drop length_map nle_le
+    by (smt (verit, del_insts))
+  then show "\<And>t x y c1 c2 \<gamma>.
+       \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<Longrightarrow>
+       length (clip_timeline x t) \<noteq> 1 \<Longrightarrow>
+       ((drop 1 (map (\<lambda>z. (fst z - fst (clip_timeline x t ! 1), snd z)) (clip_timeline x t)),
+         cUntil 0 (y - x - fst (t ! 1)) c1 c2, \<gamma>),
+        t, cUntil x y c1 c2, \<gamma>)
+       \<in> Wellfounded.measure (\<lambda>(t, c, \<gamma>). size c + length t)"
+    by auto
+qed
 
 end
