@@ -171,11 +171,6 @@ proof -
   then have "\<And>x y \<gamma> t c1 c2.
    \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<longrightarrow>
     length (clip_timeline x t) \<noteq> 1 \<longrightarrow>
-    size c1 < size (cUntil x y c1 c2)"
-    by force
-  then have "\<And>x y \<gamma> t c1 c2.
-   \<not> (length (clip_timeline x t) = 0 \<or> y < 0) \<longrightarrow>
-    length (clip_timeline x t) \<noteq> 1 \<longrightarrow>
     size c1 + length (clip_timeline x t) < size (cUntil x y c1 c2) + length t"
     using 1 
     by fastforce
