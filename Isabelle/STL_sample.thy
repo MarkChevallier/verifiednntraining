@@ -122,34 +122,31 @@ proof -
     by blast
 qed
 
-definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> (real \<times> 'v) list" where
-"clip_timeline x y t = take 
-  (find_index (\<lambda>r. r>y) (map fst (drop (find_index (\<lambda>r. r\<ge>x) (map fst t)) t)))
-  (drop (find_index (\<lambda>r. r\<ge>x) (map fst t)) t)"
+definition clip_timeline :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> (real \<times> 'v) list" where
+"clip_timeline x t = signal_shift t (fst (t!(find_index (\<lambda>r. r\<ge>x) (map fst t))))"
 
-lemma clip_timeline_length:"length (clip_timeline x y xs) \<le> length xs"
+lemma clip_timeline_length:"length (clip_timeline x xs) \<le> length xs"
   using clip_timeline_def length_rev length_take linorder_not_le min_less_iff_conj 
-    order_less_imp_le rev_drop
+    order_less_imp_le rev_drop signal_shift_def length_map
   by (metis (no_types, lifting))
 
-value "clip_timeline 13.5 5 [(1,a),(2,b),(8,c),(12,d),(15,e)]"
+value "clip_timeline 8 [(1,a),(2,b),(8,c),(12,d),(15,e)]"
 
 function robust :: "(real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
 "robust t (cMu f r) \<gamma> = f (find_time t 0) - r"
 | "robust t (cNot c) \<gamma> = -(robust t c \<gamma>)"
-| "robust t (cAnd c1 c2) \<gamma> = Max_gamma_comp \<gamma> (robust t c1 \<gamma>) (robust t c2 \<gamma>)"
-| "robust t (cUntil x y c1 c2) \<gamma> = (if length (clip_timeline x y t) = 0 then -1 else 
-    (if length (clip_timeline x y t) = 1 then
-      (robust (clip_timeline x y t) c2 \<gamma>) else
-    (Min_gamma_comp \<gamma>
-      (robust (clip_timeline x y t) c2 \<gamma>)
-      (Max_gamma_comp \<gamma> 
-        (robust (clip_timeline x y t) c1 \<gamma>)
-        (robust (map (\<lambda>p. (fst p - (fst ((clip_timeline x y t)!1)), snd p)) (drop 1 (clip_timeline x y t))) (cUntil 0 (y-x) c1 c2) \<gamma>)))))"
+| "robust t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust t c1 \<gamma>) (robust t c2 \<gamma>)"
+| "robust t (cUntil x y c1 c2) \<gamma> = (if length (clip_timeline x t) = 0 \<or> y<0 then -1 else 
+    (Max_gamma_comp \<gamma>
+      (robust (clip_timeline x t) c2 \<gamma>)
+      (Min_gamma_comp \<gamma> 
+        (robust (clip_timeline x t) c1 \<gamma>)
+        (robust (clip_timeline (fst (t!1)) t) (cUntil 0 (y-x-(fst (t!1))) c1 c2) \<gamma>))))"
   by (pat_completeness, simp+)
 termination 
   apply simp+
-  by (size_change)
+  
+  
   
 
 (*
