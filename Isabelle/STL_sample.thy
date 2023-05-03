@@ -167,7 +167,7 @@ lemma Until_drop_length:
   shows "length (drop 1 (map (\<lambda>x. (fst x - fst (t!1), snd x)) t)) < length t"
   using assms
   by simp
-*)
+
 
 lemma cUntil_evals_alt:
   fixes t :: "(real \<times> 'v::real_vector) list" and c1 c2 :: "'v constraint" and x y :: "real"
@@ -188,7 +188,7 @@ proof -
       by auto
 
     oops
-      
+*)      
 
 value "clip_timeline 2 [(0::real,a),(2,b),(8,c),(12,d),(15,e)]"
 value "length (clip_timeline (fst ([(0,a)]!1)) [(0,a)])"
@@ -213,61 +213,77 @@ function robust :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Ri
 "robust p t (cMu f r) \<gamma> = (if (\<exists>n<length t. fst (t!n) = p) then f (find_time t p) - r else -1)"
 | "robust p t (cNot c) \<gamma> = - (robust p t c \<gamma>)"
 | "robust p t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust p t c1 \<gamma>) (robust p t c2 \<gamma>)"
-| "robust p t (cUntil x y c1 c2) \<gamma> = (if x<0 \<or> y<0 \<or> ((find (\<lambda>z. fst z \<ge> p+x) t) = None) then -1 else 
-      (Max_gamma_comp \<gamma>
-        (robust (fst (the (find (\<lambda>z. fst z \<ge> p+x) t))) t c2 \<gamma>)
-        (Min_gamma_comp \<gamma> 
-          (robust (fst (the (find (\<lambda>z. fst z \<ge> p+x) t))) t c1 \<gamma>)
-          (robust (fst (the (find (\<lambda>z. fst z > (fst (the (find (\<lambda>z. fst z \<ge> p+x) t)))) t))) t 
-            (cUntil 0 (y-x-p) c1 c2) \<gamma>))))"
+| "robust p t (cUntil x y c1 c2) \<gamma> = (if x<0 \<or> y<0 \<or> (length (filter (\<lambda>z. z \<ge> p+x) (map fst t)) = 0) then -1 
+      else (Max_gamma_comp \<gamma>
+          (robust (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c2 \<gamma>)
+          (Min_gamma_comp \<gamma> 
+            (robust (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c1 \<gamma>)
+            (robust (Min (((set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) - {Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))})) t 
+              (cUntil 0 (y-p-x) c1 c2) \<gamma>))))"
   by pat_completeness auto
 termination 
   apply (relation 
-      "Wellfounded.measure (\<lambda>(p,t,c,\<gamma>). length (filter (\<lambda>x. fst x \<ge> p) t) + size c)")
+      "Wellfounded.measure (\<lambda>(p,t,c,\<gamma>). card (set (filter (\<lambda>z. z \<ge> p) (map fst t))) + size c)")
         apply simp+
 proof -
   have "\<And>p t (x::real) y c1.
-       \<not> x < 0 \<and> \<not> y < 0 \<and> (\<exists>a b. find (\<lambda>z. p + x \<le> fst z) t = Some (a, b)) \<Longrightarrow>
-      (\<forall>xa. fst (the (find (\<lambda>z. p + x \<le> fst z) t)) \<le> xa \<longrightarrow> p \<le> xa)"
+       \<not> x < 0 \<and> \<not> y < 0 \<and> (\<exists>a b. find (\<lambda>z. p+x \<le> fst z) t = Some (a, b)) \<Longrightarrow>
+      (\<forall>xa. fst (the (find (\<lambda>z. p+x \<le> fst z) t)) \<le> xa \<longrightarrow> p \<le> xa)"
     using find_Some_iff2 option.sel
     by (smt (verit, del_insts))
   then have 1:"\<And>p t (x::real) y c1.
-     \<not> x < 0 \<and> \<not> y < 0 \<and> (\<exists>a b. find (\<lambda>z. p + x \<le> fst z) t = Some (a, b)) \<Longrightarrow>
-    length (filter (\<lambda>xa. fst (the (find (\<lambda>z. p + x \<le> fst z) t)) \<le> fst xa) t)
+     \<not> x < 0 \<and> \<not> y < 0 \<and> (\<exists>a b. find (\<lambda>z. p+x \<le> fst z) t = Some (a, b)) \<Longrightarrow>
+    length (filter (\<lambda>xa. fst (the (find (\<lambda>z. p+x \<le> fst z) t)) \<le> fst xa) t)
     \<le> length (filter (\<lambda>x. p \<le> fst x) t)"
     using length_filter_implies find_Some_iff option.sel
     by (smt (verit, best))
   then show "\<And>p t (x::real) y c1.
-     \<not> x < 0 \<and> \<not> y < 0 \<and> (\<exists>a b. find (\<lambda>z. p + x \<le> fst z) t = Some (a, b)) \<Longrightarrow>
-      length (filter (\<lambda>xa. fst (the (find (\<lambda>z. p + x \<le> fst z) t)) \<le> fst xa) t)
+     \<not> x < 0 \<and> \<not> y < 0 \<and> (\<exists>a b. find (\<lambda>z. p+x \<le> fst z) t = Some (a, b)) \<Longrightarrow>
+      length (filter (\<lambda>xa. fst (the (find (\<lambda>z. p+x \<le> fst z) t)) \<le> fst xa) t)
        < Suc (length (filter (\<lambda>x. p \<le> fst x) t) + size c1)"
     by fastforce
   then have "\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real).
-       \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p + x \<le> fst z) t = None) \<Longrightarrow>
-      length (filter (\<lambda>xa. (fst (the (find (\<lambda>z. p + x \<le> fst z) t))) \<le> fst xa) t) + size c1
+       \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p+x \<le> fst z) t = None) \<Longrightarrow>
+      length (filter (\<lambda>xa. (fst (the (find (\<lambda>z. p+x \<le> fst z) t))) \<le> fst xa) t) + size c1
       < length (filter (\<lambda>xa. p \<le> fst xa) t) + size (cUntil x y c1 c2)"
     using 1 
     by fastforce
   then show "\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real).
-       \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p + x \<le> fst z) t = None) \<Longrightarrow>
-       ((fst (the (find (\<lambda>z. p + x \<le> fst z) t)), t, c1, \<gamma>), p, t, cUntil x y c1 c2, \<gamma>)
+       \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p+x \<le> fst z) t = None) \<Longrightarrow>
+       ((fst (the (find (\<lambda>z. p+x \<le> fst z) t)), t, c1, \<gamma>), p, t, cUntil x y c1 c2, \<gamma>)
        \<in> Wellfounded.measure (\<lambda>(p, t, c, \<gamma>). length (filter (\<lambda>xa. p \<le> fst xa) t) + size c)"
     by force
+  have "\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real).
+       \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p + x \<le> fst z) t = None) \<Longrightarrow>
+      (\<exists>n<length t. fst (t!n) \<ge> p+x)"
+    using find_Some_iff2 option.collapse
+    by metis
   then have "\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real).
        \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p + x \<le> fst z) t = None) \<Longrightarrow>
-      size (cUntil 0 (y - x - p) c1 c2) = size (cUntil x y c1 c2)"
-    by auto
-
+      length (filter (\<lambda>xa. p+x \<le> fst xa) t) > 0"
+  proof -
+    have "\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real) P.
+      ((\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x) (t!n)) \<longrightarrow> length (filter (\<lambda>xa. p+x \<le> fst xa) t) > 0)"
+      using add_0 bot_nat_0.not_eq_extremum length_filter_less nth_mem order_less_irrefl 
+        sum_length_filter_compl
+      by (metis (no_types, lifting))
+    then show "\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real).
+       \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p + x \<le> fst z) t = None) \<Longrightarrow>
+      length (filter (\<lambda>xa. p+x \<le> fst xa) t) > 0"
+      using \<open>\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real).
+       \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p + x \<le> fst z) t = None) \<Longrightarrow>
+      (\<exists>n<length t. fst (t!n) \<ge> p+x)\<close>
+      by metis
+  qed
   then have "\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real).
        \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p + x \<le> fst z) t = None) \<Longrightarrow>
-      length (filter (\<lambda>xa. fst (the (find (\<lambda>z. fst (the (find (\<lambda>z. p + x \<le> fst z) t)) < fst z) t)) \<le> fst xa) t) + size (cUntil 0 (y - x - p) c1 c2)
+       length (filter (\<lambda>za. (fst (the (find (\<lambda>xa. fst (the (find (\<lambda>z. p+x \<le> fst z) t)) < fst xa) t))) \<le> fst za) t)
+      + size (cUntil 0 (y-p) c1 c2)
       < length (filter (\<lambda>xa. p \<le> fst xa) t) + size (cUntil x y c1 c2)"
-    using 1 sledgehammer
-
   then show "\<And>(p::real) (t::(real\<times>('v::real_vector)) list) (x::real) (y::real) (c1::'v constraint) (c2::'v constraint) (\<gamma>::real).
        \<not> (x < 0 \<or> y < 0 \<or> find (\<lambda>z. p + x \<le> fst z) t = None) \<Longrightarrow>
-       ((fst (the (find (\<lambda>z. fst (the (find (\<lambda>z. p + x \<le> fst z) t)) < fst z) t)), t,
-         cUntil 0 (y - x - p) c1 c2, \<gamma>),
+       ((fst (the (find (\<lambda>xa. fst (the (find (\<lambda>z. p+x \<le> fst z) t)) < fst xa) t)), t,
+         cUntil 0 (y-p) c1 c2, \<gamma>),
         p, t, cUntil x y c1 c2, \<gamma>)
        \<in> Wellfounded.measure (\<lambda>(p, t, c, \<gamma>). length (filter (\<lambda>xa. p \<le> fst xa) t) + size c)"
     
