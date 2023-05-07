@@ -9,6 +9,7 @@ definition valid_signal :: "(real \<times> 'v::real_vector) list \<Rightarrow> b
 
 definition find_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> 'v" where
 "find_time xs r = (if (find (\<lambda>x. fst x = r) xs = None) then 0 else (snd (the (find (\<lambda>x. fst x = r) xs))))"
+(* remove None *)
 
 definition signal_shift :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> (real \<times> 'v::real_vector) list" where
 "signal_shift xs r = map (\<lambda>x. (fst x - r, snd x)) (drop (index (map fst xs) r) xs)"
@@ -228,9 +229,10 @@ termination
 proof -
   have "\<And>p t (x::real) y c1.
        \<not> x < 0 \<and> \<not> y < 0 \<and> (\<exists>a b. find (\<lambda>z. p+x \<le> fst z) t = Some (a, b)) \<Longrightarrow>
-      (\<forall>xa. fst (the (find (\<lambda>z. p+x \<le> fst z) t)) \<le> xa \<longrightarrow> p \<le> xa)"
+      card {xa \<in> fst ` set t. Min {xa \<in> fst ` set t. p + x \<le> xa} \<le> xa}
+       < Suc (card {x \<in> fst ` set t. p \<le> x} + size c1)"
     using find_Some_iff2 option.sel
-    by (smt (verit, del_insts))
+    
   then have 1:"\<And>p t (x::real) y c1.
      \<not> x < 0 \<and> \<not> y < 0 \<and> (\<exists>a b. find (\<lambda>z. p+x \<le> fst z) t = Some (a, b)) \<Longrightarrow>
     length (filter (\<lambda>xa. fst (the (find (\<lambda>z. p+x \<le> fst z) t)) \<le> fst xa) t)
@@ -332,8 +334,8 @@ qed
 
 lemma robust_evals_works:
   fixes t :: "(real \<times> 'v::real_vector) list" and c :: "'v constraint"
-  assumes "valid_signal t"
-  shows "(robust t c 0 > 0) \<longrightarrow> (evals t c) \<and> (robust t c 0 < 0) \<longrightarrow> \<not>(evals t c)"
+  assumes "valid_signal t" "\<exists>n<length t. t!n = p"
+  shows "(robust p t c 0 > 0) \<longrightarrow> (evals p t c) \<and> (robust p t c 0 < 0) \<longrightarrow> \<not>(evals p t c)"
 proof (induction c)
   case (cMu f r)
   then show ?case
