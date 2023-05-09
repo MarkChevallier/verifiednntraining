@@ -129,6 +129,37 @@ proof -
        \<in> Wellfounded.measure
            (\<lambda>(p, t, c, \<gamma>). card (set (filter ((\<le>) p) (map fst t))) + size c)"
       by auto
+    have fin2:"finite (set (filter ((\<le>) (p + x)) (map fst t)) -
+              {Min (set (filter ((\<le>) (p + x)) (map fst t)))})"
+      by blast
+    have "card (set (filter ((\<le>) (p + x)) (map fst t)) -
+              {Min (set (filter ((\<le>) (p + x)) (map fst t)))}) =
+          card (set (filter ((\<le>) (p + x)) (map fst t))) - 1"
+      using List.finite_set Min_in card.empty card_Diff_singleton_if diff_is_0_eq 
+        linorder_linear not_one_le_zero
+      by (metis (no_types, lifting))
+    then have "card (set (filter ((\<le>) (p + x)) (map fst t)) -
+              {Min (set (filter ((\<le>) (p + x)) (map fst t)))}) > 0"
+      using assms2 assms3
+      by fastforce
+    then have "set (filter ((\<le>) (p + x)) (map fst t)) -
+              {Min (set (filter ((\<le>) (p + x)) (map fst t)))} \<noteq> {}"
+      using card_gt_0_iff 
+      by blast
+    then have "Min (set (filter ((\<le>) (p + x)) (map fst t)) -
+              {Min (set (filter ((\<le>) (p + x)) (map fst t)))}) >
+               Min (set (filter ((\<le>) (p + x)) (map fst t)))"
+      using fin2 Diff_subset Min_antimono infinite_remove Min_in dual_order.refl 
+        linorder_not_less order_antisym subset_Diff_insert
+      by metis
+    then have "Min (set (filter ((\<le>) (p + x)) (map fst t)) -
+              {Min (set (filter ((\<le>) (p + x)) (map fst t)))}) > p"
+      using \<open>Min {xa\<in>fst ` set t. p+x \<le> xa} \<ge> p\<close>
+      by force
+    then have "card (set (filter ((\<le>) (Min (set (filter ((\<le>) (p + x)) (map fst t)) -
+              {Min (set (filter ((\<le>) (p + x)) (map fst t)))}))) (map fst t)))
+            < card (set (filter ((\<le>) p) (map fst t)))"
+      sledgehammer
 
   
   
