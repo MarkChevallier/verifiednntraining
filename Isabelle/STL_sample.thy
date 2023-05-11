@@ -41,21 +41,76 @@ proof -
     by blast
 qed
 
-lemma filter_real_list_card:
-  fixes A :: "real list" and x y :: real
-  assumes "y>x" "x\<in>set A"
-  shows "card (set (filter ((\<le>) y) A)) < card (set (filter ((\<le>) x) A))"
+definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real\<times>'v::real_vector) list \<Rightarrow> (real\<times>'v::real_vector) list" where
+"clip_timeline x y t = sort_key (\<lambda>z. fst z) (filter (\<lambda>z. fst z \<ge> x \<and> fst z \<le> y) t)"
+
+lemma tst:"length t > 0 \<longrightarrow> (sort_key id t)!0 = Min (set t)"
 proof -
-  have "x\<notin>(set (filter ((\<le>) y) A)) \<and> x\<in>(set (filter ((\<le>) x) A))"
-    using assms
-    by simp
-  then have "(set (filter ((\<le>) y) A))\<subset>(set (filter ((\<le>) x) A))"
-    using dual_order.strict_iff_order filter_set member_filter subset_code(1)
-    by (smt (verit, del_insts))
+  {assume "length t > 0"
+    then have fin:"finite (set t) \<and> set t \<noteq> {}"
+      by blast
+    have "sorted (sort_key id t)"
+      by (metis list.map_id sorted_sort_key)
+    have "(sort_key id t)!0 = Min (set t)"
+    proof (rule ccontr)
+      assume "(sort_key id t)!0 \<noteq> Min (set t)"
+      then have "\<exists>n\<in>(set t). n < (sort_key id t)!0"
+        using fin Min_in Min_le \<open>0 < length t\<close> finite_has_minimal length_sort linorder_not_le 
+          nth_mem set_sort
+        by metis
+      then show False
+        using \<open>sorted (sort_key id t)\<close> in_set_conv_nth linorder_not_le not_less_zero set_sort 
+          sorted_nth_mono 
+        by metis
+    qed}
   then show ?thesis
-    using List.finite_set psubset_card_mono
-    by meson
+    by simp
 qed
+        
+
+lemma clip_timeline_0:
+  assumes "\<exists>n<length t. fst (t!n) \<ge> x \<and> fst (t!n) \<le> y"
+  shows "fst ((clip_timeline x y t)!0) = Min (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t)))"
+proof -
+  have "set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t)) = {r. r \<in> set (map fst t) \<and> r\<ge>x \<and> r\<le>y}"
+    by force
+  then have "finite (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) 
+      \<and> (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) \<noteq> {}"
+    using assms 
+    by fastforce
+  then have "Min (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) \<in> set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))"
+    using Min_in
+    by blast
+  then have "\<forall>n<length (clip_timeline x y t). fst ((clip_timeline x y t)!0) \<le> fst ((clip_timeline x y t)!n)"
+    using clip_timeline_def sort_key_def
+    
+
+
+lemma cUntil_recurs:
+  fixes p x y :: real and t :: "(real\<times>'v::real_vector) list" and c1 c2 :: "'v constraint"
+  assumes "valid_signal t"
+  shows "evals p t (cUntil x y c1 c2) = (if x<0 \<or> y<0 \<or> card {z \<in> fst ` set t. p+x \<le> z} = 0 then False
+      else (if card {z \<in> fst ` set t. p+x \<le> z} = 1 then 
+        evals p t c2
+      else ((evals (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c2) \<or>
+          ((evals (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c1) \<and>
+            (evals (Min (((set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) - {Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))})) t 
+              (cUntil 0 (y-p-x) c1 c2))))))"
+proof -
+  let ?st="sorted_wrt (\<lambda>x. (\<le>) \<circ> fst) t"
+  {assume "evals p t (cUntil x y c1 c2)"
+    then have "(\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
+    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1))"
+      using evals.simps(4)
+      by fastforce
+    then have "(if x<0 \<or> y<0 \<or> card {z \<in> fst ` set t. p+x \<le> z} = 0 then False
+      else (if card {z \<in> fst ` set t. p+x \<le> z} = 1 then 
+        evals p t c2
+      else ((evals (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c2) \<or>
+          ((evals (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c1) \<and>
+            (evals (Min (((set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) - {Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))})) t 
+              (cUntil 0 (y-p-x) c1 c2))))))"
+    proof (induction
 
 function robust :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
 "robust p t (cMu f r) \<gamma> = (if (\<exists>n<length t. fst (t!n) = p) then f (find_time t p) - r else -1)"
@@ -76,6 +131,21 @@ termination
       "Wellfounded.measure (\<lambda>(p,t,c,\<gamma>). card (set (filter (\<lambda>z. z \<ge> p) (map fst t))) + size c)")
          apply simp+
 proof -
+  have filter_real_list_card:"\<And>x y::real. \<And>A::real list. x < y \<Longrightarrow>
+   x \<in> set A \<Longrightarrow> card (set (filter ((\<le>) y) A)) < card (set (filter ((\<le>) x) A))"
+  proof -
+    have "\<And>x y::real. \<And>A::real list. x < y \<Longrightarrow>
+   x \<in> set A \<Longrightarrow> x\<notin>(set (filter ((\<le>) y) A)) \<and> x\<in>(set (filter ((\<le>) x) A))"
+      by simp
+    then have "\<And>x y::real. \<And>A::real list. x < y \<Longrightarrow>
+   x \<in> set A \<Longrightarrow> (set (filter ((\<le>) y) A))\<subset>(set (filter ((\<le>) x) A))"
+      using dual_order.strict_iff_order filter_set member_filter subset_code(1)
+      by (smt (verit, del_insts))
+    then show "\<And>x y::real. \<And>A::real list. x < y \<Longrightarrow>
+   x \<in> set A \<Longrightarrow> card (set (filter ((\<le>) y) A)) < card (set (filter ((\<le>) x) A))"
+      using List.finite_set psubset_card_mono
+      by meson
+  qed
   {fix p x y \<gamma> :: real and t :: "(real \<times> ('v::real_vector)) list" and c1 c2 :: "('v::real_vector) constraint"
     have fin:"finite {z\<in>fst ` set t. Min {xa \<in> fst ` set t. p + x \<le> xa} \<le> z}
       \<and> finite {z\<in>fst ` set t. p \<le> z}"
