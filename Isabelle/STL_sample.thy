@@ -3,9 +3,19 @@ theory STL_sample
 
 begin
 
+fun valid_constraints_real :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real" where
+"valid_constraints_real p t (cMu f r) = (if (p\<in>set (map fst t)) then 1 else -1)"
+| "valid_constraints_real p t (cNot c) = (valid_constraints_real p t c)"
+| "valid_constraints_real p t (cAnd c1 c2) = (min (valid_constraints_real p t c1) (valid_constraints_real p t c2))"
+| "valid_constraints_real p t (cUntil x y c1 c2) = (if (x \<ge> 0 \<and> y \<ge> 0) then 1 else -1)"
+
+definition valid_constraints :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
+"valid_constraints p t c = (valid_constraints_real p t c > 0)"
+
 definition valid_signal :: "(real \<times> 'v::real_vector) list \<Rightarrow> bool" where
 "valid_signal xs = distinct (map fst xs)"
 
+(*
 definition first_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real" where
 "first_time xs = Min (set (map fst xs))"
 
@@ -14,10 +24,10 @@ definition at_time :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \
 
 definition next_time :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> real" where
 "next_time p xs = Min (set (filter (\<lambda>x. x>p) (map fst xs)))"
+*)
 
 definition find_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> 'v" where
 "find_time xs r = (snd (the (find (\<lambda>x. fst x = r) xs)))"
-(* remove None *)
 
 (*
 lemma signal_induct: 
@@ -38,34 +48,43 @@ next
 *)    
 
 fun evals :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"evals p t (cMu f r) = (if (\<exists>n<length t. fst (t!n) = p) then (f (find_time t p) > r) else False)"
-| "evals p t (cNot c) = (\<not>(evals p t c))"
-| "evals p t (cAnd c1 c2) = ((evals p t c1) \<and> (evals p t c2))"
-| "evals p t (cUntil x y c1 c2) = (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
-    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1))"
+"evals p t (cMu f r) = (valid_constraints p t (cMu f r) \<and> (f (find_time t p) > r))"
+| "evals p t (cNot c) = (valid_constraints p t (cNot c) \<and> \<not>(evals p t c))"
+| "evals p t (cAnd c1 c2) = (valid_constraints p t (cAnd c1 c2) \<and> (evals p t c1) \<and> (evals p t c2))"
+| "evals p t (cUntil x y c1 c2) = ((valid_constraints p t (cUntil x y c1 c2)) \<and> (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
+    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1) \<and> x\<ge>0 \<and> y\<ge>0))"
 
-lemma cTrue_evals:"evals p t cTrue = (if (\<exists>n<length t. fst (t!n) = p) then True else False)"
-  using cTrue_def evals.simps(1) zero_less_one 
+lemma cTrue_valid_constraints_real:
+  "valid_constraints_real p t cTrue = (if (p\<in>set (map fst t)) then 1 else -1)"
+  using cTrue_def valid_constraints_real.simps(1)
   by metis
 
-lemma cOr_evals:"evals p t (cOr c1 c2) = (evals p t c1 \<or> evals p t c2)"
-  using cOr_def evals.simps(2,3)
+lemma cTrue_evals:"evals p t cTrue = (if (p\<in>set (map fst t)) then True else False)"
+  using cTrue_def evals.simps(1) zero_less_one valid_constraints_def cTrue_valid_constraints_real
+  by (smt (verit, ccfv_SIG))
+
+lemma cOr_valid_constraints_real:
+  "valid_constraints_real p t (cOr c1 c2) = min (valid_constraints_real p t c1) (valid_constraints_real p t c2)"
+  using cOr_def valid_constraints_real.simps(2,3)
   by metis
+
+lemma cOr_evals:"evals p t (cOr c1 c2) = (valid_constraints p t (cOr c1 c2) \<and> (evals p t c1 \<or> evals p t c2))"
+  using cOr_def evals.simps(2,3) valid_constraints_def cOr_valid_constraints_real
+  try0
 
 lemma cEventually_evals: "evals p t (cEventually x y c) =
-    (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c)"
+    (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c \<and> x\<ge>0 \<and> y\<ge>0)"
   using evals.simps(4) cTrue_evals cEventually_def
   by (smt (verit))
 
 lemma cAlways_evals: "evals p t (cAlways x y c) =
-  (\<forall>p'. p'\<ge>p+x\<and>p'\<le>p+y\<and> (\<exists>n<length t. fst (t!n) = p') \<longrightarrow> evals p' t c)"
+  ((\<forall>p'. p'\<ge>p+x\<and>p'\<le>p+y\<and> (\<exists>n<length t. fst (t!n) = p') \<longrightarrow> evals p' t c) \<or> x<0 \<or> y<0)"
 proof -
-  have "evals p t (cAlways x y c) = (\<not>(\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t (cNot c)))"
+  have "evals p t (cAlways x y c) = (\<not>(\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t (cNot c) \<and> x\<ge>0 \<and> y\<ge>0))"
     using cEventually_evals cAlways_def evals.simps(2)
-    by metis
+    by (metis (no_types, lifting))    
   then show ?thesis
-    using evals.simps(2)
-    by blast
+    by fastforce    
 qed
 
 (* definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real\<times>'v::real_vector) list \<Rightarrow> (real\<times>'v::real_vector) list" where
@@ -147,8 +166,8 @@ proof -
         case True
         have "evals p zs (cUntil x y c1 c2)"
         proof -
-        then show ?thesis
-          
+        show ?thesis
+          oops
 
 function robust :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
 "robust p t (cMu f r) \<gamma> = (if (\<exists>n<length t. fst (t!n) = p) then f (find_time t p) - r else -1)"
