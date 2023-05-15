@@ -1,14 +1,41 @@
 theory STL_sample
-  imports STL "List-Index.List_Index"
+  imports STL Code_Real_Approx_By_Float_2
 
 begin
 
 definition valid_signal :: "(real \<times> 'v::real_vector) list \<Rightarrow> bool" where
 "valid_signal xs = distinct (map fst xs)"
 
+definition first_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real" where
+"first_time xs = Min (set (map fst xs))"
+
+definition at_time :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> real" where
+"at_time p xs = Min (set (filter (\<lambda>x. x\<ge>p) (map fst xs)))"
+
+definition next_time :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> real" where
+"next_time p xs = Min (set (filter (\<lambda>x. x>p) (map fst xs)))"
+
 definition find_time :: "(real \<times> 'v::real_vector) list \<Rightarrow> real \<Rightarrow> 'v" where
 "find_time xs r = (snd (the (find (\<lambda>x. fst x = r) xs)))"
 (* remove None *)
+
+(*
+lemma signal_induct: 
+  "P (first_time xs) \<Longrightarrow> (\<And>p. P p \<Longrightarrow> P (next_time p xs)) \<Longrightarrow> (\<And>p. p\<in>set(map fst xs) \<Longrightarrow> P p)"
+proof (induct xs rule: list.induct)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons x xs)
+  then show ?case
+  proof (cases "fst x = first_time (x#xs)")
+    case True
+    then have "P (first_time (x#xs))"
+      using Cons 
+      by blast
+    then have "\<And>p. p\<in>set(map fst xs) \<Longrightarrow> P p"
+      using Cons 
+*)    
 
 fun evals :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
 "evals p t (cMu f r) = (if (\<exists>n<length t. fst (t!n) = p) then (f (find_time t p) > r) else False)"
@@ -18,7 +45,7 @@ fun evals :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarr
     \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1))"
 
 lemma cTrue_evals:"evals p t cTrue = (if (\<exists>n<length t. fst (t!n) = p) then True else False)"
-  using cTrue_def evals.simps(1) zero_less_one
+  using cTrue_def evals.simps(1) zero_less_one 
   by metis
 
 lemma cOr_evals:"evals p t (cOr c1 c2) = (evals p t c1 \<or> evals p t c2)"
@@ -41,7 +68,7 @@ proof -
     by blast
 qed
 
-definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real\<times>'v::real_vector) list \<Rightarrow> (real\<times>'v::real_vector) list" where
+(* definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real\<times>'v::real_vector) list \<Rightarrow> (real\<times>'v::real_vector) list" where
 "clip_timeline x y t = sort_key (\<lambda>z. fst z) (filter (\<lambda>z. fst z \<ge> x \<and> fst z \<le> y) t)"
 
 lemma tst:"length t > 0 \<longrightarrow> (sort_key id t)!0 = Min (set t)"
@@ -83,8 +110,8 @@ proof -
     by blast
   then have "\<forall>n<length (clip_timeline x y t). fst ((clip_timeline x y t)!0) \<le> fst ((clip_timeline x y t)!n)"
     using clip_timeline_def sort_key_def
-    
-
+    oops
+*)
 
 lemma cUntil_recurs:
   fixes p x y :: real and t :: "(real\<times>'v::real_vector) list" and c1 c2 :: "'v constraint"
@@ -97,20 +124,31 @@ lemma cUntil_recurs:
             (evals (Min (((set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) - {Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))})) t 
               (cUntil 0 (y-p-x) c1 c2))))))"
 proof -
-  let ?st="sorted_wrt (\<lambda>x. (\<le>) \<circ> fst) t"
-  {assume "evals p t (cUntil x y c1 c2)"
-    then have "(\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
-    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1))"
-      using evals.simps(4)
-      by fastforce
-    then have "(if x<0 \<or> y<0 \<or> card {z \<in> fst ` set t. p+x \<le> z} = 0 then False
+  {assume onew:"evals p t (cUntil x y c1 c2)"
+    have "(if x<0 \<or> y<0 \<or> card {z \<in> fst ` set t. p+x \<le> z} = 0 then False
       else (if card {z \<in> fst ` set t. p+x \<le> z} = 1 then 
         evals p t c2
       else ((evals (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c2) \<or>
           ((evals (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c1) \<and>
             (evals (Min (((set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) - {Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))})) t 
               (cUntil 0 (y-p-x) c1 c2))))))"
-    proof (induction
+    proof (insert onew, induct t)
+      case Nil
+      then show ?case 
+        by force
+    next
+      case (Cons z zs)
+      then obtain p' where "(p'\<ge>p+x \<and> p'\<le>p+y \<and> (\<exists>n<length (z#zs). fst ((z#zs)!n) = p') \<and> evals p' (z#zs) c2 
+        \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length (z#zs). fst ((z#zs)!n) = p'') \<longrightarrow> evals p'' (z#zs) c1))"
+        using eval.simps(4) 
+        by fastforce
+      then show ?case
+      proof (cases "fst z < p \<or> fst z > p'")
+        case True
+        have "evals p zs (cUntil x y c1 c2)"
+        proof -
+        then show ?thesis
+          
 
 function robust :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
 "robust p t (cMu f r) \<gamma> = (if (\<exists>n<length t. fst (t!n) = p) then f (find_time t p) - r else -1)"
@@ -326,5 +364,9 @@ proof -
       by presburger+
   qed
 qed    
+
+export_code robust
+ in OCaml
+  module_name STLLoss
 
 end
