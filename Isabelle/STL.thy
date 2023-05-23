@@ -6,6 +6,12 @@ begin
 datatype 'v::real_vector constraint = cMu "'v \<Rightarrow> real" real | cNot "'v constraint" 
   | cAnd "'v constraint" "'v constraint" | cUntil real real "'v constraint" "'v constraint"
 
+fun subconstraint :: "'v::real_vector constraint \<Rightarrow> 'v constraint \<Rightarrow> bool" where
+"subconstraint c (cMu f r) = (c = cMu f r)"
+| "subconstraint c (cNot c1) = (c = (cNot c1) \<or> c = c1 \<or> subconstraint c c1)"
+| "subconstraint c (cAnd c1 c2) = (c = (cAnd c1 c2) \<or> c = c1 \<or> c = c2 \<or> subconstraint c c1 \<or> subconstraint c c2)"
+| "subconstraint c (cUntil x y c1 c2) = (c = (cUntil x y c1 c2) \<or> c = c1 \<or> c = c2 \<or> subconstraint c c1 \<or> subconstraint c c2)"
+
 fun valid_constraint :: "real \<Rightarrow> 'v::real_vector constraint \<Rightarrow> bool" where
 "valid_constraint l (cMu f r) = (l \<ge> 0)"
 | "valid_constraint l (cNot c) = (valid_constraint l c)"
@@ -16,6 +22,11 @@ fun valid_constraint :: "real \<Rightarrow> 'v::real_vector constraint \<Rightar
     \<and> valid_constraint (l-y) c1
     \<and> valid_constraint (l-x) c2
     \<and> valid_constraint (l-y) c2))"
+
+lemma vc_ind:
+  assumes "valid_constraint l c" "size c > 1"
+  shows"1=1"
+  by auto
 
 lemma vc_l:
   assumes "valid_constraint l c"
@@ -78,6 +89,32 @@ next
   then show ?case
     using valid_constraint.simps(4)
     by blast
+qed
+
+lemma vc_subconstraint:
+  fixes l :: real and c c1 :: "'v::real_vector constraint"
+  assumes "valid_constraint l c" "subconstraint c' c"
+  shows "valid_constraint l c'"
+proof (insert assms, induction c)
+  case (cMu f r)
+  then show ?case 
+    using subconstraint.simps(1) valid_constraint.simps(1)
+    by force
+next
+  case (cNot c)
+  then show ?case
+    using subconstraint.simps(2) valid_constraint.simps(2)
+    by auto
+next
+  case (cAnd c1 c2)
+  then show ?case
+    using subconstraint.simps(3) valid_constraint.simps(3)
+    by auto
+next
+  case (cUntil x y c1 c2)
+  then show ?case
+    using subconstraint.simps(4) valid_constraint.simps(4) vc_longer diff_add_cancel
+    by metis
 qed
 
 fun evalvc :: "(real \<Rightarrow> 'v::real_vector) \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
