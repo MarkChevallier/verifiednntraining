@@ -284,18 +284,9 @@ lemma recurse_length_alt:
   assumes "\<And>t. foo P t = (\<exists>n<length t. P (t!n))" and "bar P [] = False" 
     and "\<And>x xs. bar P (x#xs) = (P x \<or> bar P xs)"
   shows "foo P xs = bar P xs"
-proof (induct xs)
-  case Nil
-  then show ?case 
-    using assms
-    by simp
-next
-  case (Cons x xs)
-  then show ?case 
-    using One_nat_def assms bot_nat_0.not_eq_extremum drop0 drop_Suc_Cons 
-      length_0_conv list.discI nth_Cons_0 recurse_length
-    by (metis (mono_tags, lifting))
-qed
+  using recurse_length_until_alt [where ?P'="\<lambda>x. True" 
+      and ?foo="\<lambda>P P' t. foo P t" and ?bar="\<lambda>P P' t. bar P t"] assms
+  by blast
 
 lemma min_list_ordered:
   assumes "sorted t" "length t>0"
