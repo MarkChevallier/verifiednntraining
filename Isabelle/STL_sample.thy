@@ -1,5 +1,5 @@
 theory STL_sample
-  imports STL
+  imports STL Code_Real_Approx_By_Float_2
 
 begin
 
@@ -208,174 +208,194 @@ lemma recurse_length:
   by auto
 
 lemma recurse_length_release_alt: 
-  fixes foo bar :: "('a \<Rightarrow> bool) \<Rightarrow> ('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> bool" and P P' :: "'a \<Rightarrow> bool" 
-  assumes "\<And>t. foo P P' t = (\<exists>n<length t. P (t!n) \<and> (\<forall>n'\<le>n. P' (t!n')))" and "bar P P' [] = False" 
-    and "\<And>x xs. bar P P' (x#xs) = ((P x \<and> P' x) \<or> ((P' x) \<and> bar P P' xs))"
-  shows "foo P P' xs = bar P P' xs"
-proof (induct xs)
-  case Nil
-  then show ?case 
-    using assms
-    by simp
-next
-  case (Cons x xs)
-  then show ?case
-  proof (cases "P x")
-    case True
-    then show ?thesis
-      using assms
-      by auto
-  next
-    case False
-    {assume 1:"foo P P' (x#xs)"
-      then have "P' x"
-        using assms(1) 
-        by auto
-      then have "\<exists>n<length (x#xs). n>0 \<and> P ((x#xs)!n) \<and> (\<forall>n'\<le>n. P' ((x#xs)!n'))"
-        using 1 assms(1) False nth_Cons_0 zero_less_iff_neq_zero
-        by metis
-      then have "\<exists>n<length xs. P (xs!n) \<and> (\<forall>n'\<le>n. P' (xs!n'))"
-        using Suc_pred' length_Cons linorder_not_le not_less_eq nth_Cons_Suc
-        by metis
-      then have "foo P P' xs"
-        using assms(1)
-        by blast
-      then have "((P ((x#xs)!0) \<and> P' ((x#xs)!0)) \<or> (P' ((x#xs)!0) \<and> bar P P' xs))"
-        using Cons \<open>P' x\<close>
+  fixes foo bar :: "('a \<Rightarrow> bool) \<Rightarrow> ('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> bool" 
+  assumes "\<And>t P P'. foo P P' t = (\<exists>n<length t. P (t!n) \<and> (\<forall>n'\<le>n. P' (t!n')))" and "\<And>P P'. bar P P' [] = False" 
+    and "\<And>x xs P P'. bar P P' (x#xs) = ((P x \<and> P' x) \<or> ((P' x) \<and> bar P P' xs))"
+  shows "\<And>P P' xs. foo P P' xs = bar P P' xs"
+proof -
+  {fix xs :: "'a list"
+    have "\<And>P P'. foo P P' xs = bar P P' xs"
+    proof (induct xs)
+      case Nil
+      then show ?case 
+        using assms
         by simp
-      then have "bar P P' (x#xs)"
-        using assms(3)
-        by simp}
-    then have onew:"foo P P' (x#xs) \<Longrightarrow> bar P P' (x#xs)"
-      by blast
-    {assume 2:"bar P P' (x#xs)"
-      then have "((P ((x#xs)!0) \<and> P' ((x#xs)!0)) \<or> (P' ((x#xs)!0) \<and> bar P P' xs))"
-        using assms(3)
-        by simp
-      then have "\<exists>n<length (x#xs). P ((x#xs)!n) \<and> (\<forall>n'\<le>n. P' ((x#xs)!n'))"
-      proof (cases "P ((x#xs)!0) \<and> P' ((x#xs)!0)")
+    next
+      case (Cons x xs)
+      then show ?case
+      proof (cases "P x")
         case True
         then show ?thesis
-          by blast
+          using assms
+          by auto
       next
         case False
-        then have "(P' ((x#xs)!0) \<and> bar P P' xs)"
-          using 2 assms(3)
-          by auto
-        then have "(P' ((x#xs)!0) \<and> (\<exists>n<length xs. P (xs!n) \<and> (\<forall>n'\<le>n. P' (xs!n'))))"
-          using Cons assms(1)
+        {assume 1:"foo P P' (x#xs)"
+          then have "P' x"
+            using assms(1) 
+            by auto
+          then have "\<exists>n<length (x#xs). n>0 \<and> P ((x#xs)!n) \<and> (\<forall>n'\<le>n. P' ((x#xs)!n'))"
+            using 1 assms(1) False nth_Cons_0 zero_less_iff_neq_zero
+            by metis
+          then have "\<exists>n<length xs. P (xs!n) \<and> (\<forall>n'\<le>n. P' (xs!n'))"
+            using Suc_pred' length_Cons linorder_not_le not_less_eq nth_Cons_Suc
+            by metis
+          then have "foo P P' xs"
+            using assms(1)
+            by blast
+          then have "((P ((x#xs)!0) \<and> P' ((x#xs)!0)) \<or> (P' ((x#xs)!0) \<and> bar P P' xs))"
+            using Cons \<open>P' x\<close>
+            by simp
+          then have "bar P P' (x#xs)"
+            using assms(3)
+            by simp}
+        then have onew:"foo P P' (x#xs) \<Longrightarrow> bar P P' (x#xs)"
           by blast
+        {assume 2:"bar P P' (x#xs)"
+          then have "((P ((x#xs)!0) \<and> P' ((x#xs)!0)) \<or> (P' ((x#xs)!0) \<and> bar P P' xs))"
+            using assms(3)
+            by simp
+          then have "\<exists>n<length (x#xs). P ((x#xs)!n) \<and> (\<forall>n'\<le>n. P' ((x#xs)!n'))"
+          proof (cases "P ((x#xs)!0) \<and> P' ((x#xs)!0)")
+            case True
+            then show ?thesis
+              by blast
+          next
+            case False
+            then have "(P' ((x#xs)!0) \<and> bar P P' xs)"
+              using 2 assms(3)
+              by auto
+            then have "(P' ((x#xs)!0) \<and> (\<exists>n<length xs. P (xs!n) \<and> (\<forall>n'\<le>n. P' (xs!n'))))"
+              using Cons assms(1)
+              by blast
+            then show ?thesis
+              using Suc_pred' bot_nat_0.not_eq_extremum length_Cons linorder_not_le not_less_eq 
+                nth_Cons_Suc 
+              by (metis (no_types, opaque_lifting))
+          qed
+          then have "foo P P' (x#xs)"
+            using assms(1) 
+            by blast}
         then show ?thesis
-          using Suc_pred' bot_nat_0.not_eq_extremum length_Cons linorder_not_le not_less_eq 
-            nth_Cons_Suc 
-          by (metis (no_types, opaque_lifting))
+          using onew 
+          by blast
       qed
-      then have "foo P P' (x#xs)"
-        using assms(1) 
-        by blast}
-    then show ?thesis
-      using onew 
-      by blast
-  qed
+    qed}
+  then show "\<And>P P' xs. foo P P' xs = bar P P' xs"
+    by simp
 qed
 
 lemma recurse_length_alt: 
-  fixes foo bar :: "('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> bool" and P :: "'a \<Rightarrow> bool" 
-  assumes "\<And>t. foo P t = (\<exists>n<length t. P (t!n))" and "bar P [] = False" 
-    and "\<And>x xs. bar P (x#xs) = (P x \<or> bar P xs)"
-  shows "foo P xs = bar P xs"
-  using recurse_length_release_alt [where ?P'="\<lambda>x. True" 
-      and ?foo="\<lambda>P P' t. foo P t" and ?bar="\<lambda>P P' t. bar P t"] assms
-  by blast
-
-lemma min_list_ordered:
-  assumes "sorted t" "length t>0"
-  shows "t!0 = Min (set t)"
-  using List.finite_set Min_in Min_le assms bot_nat_0.not_eq_extremum finite_has_minimal 
-    in_set_conv_nth length_greater_0_conv set_empty sorted_iff_nth_mono_less
-  by metis
-
-lemma drop_1_set:
-  assumes "sorted t" "distinct t" "length t>0"
-  shows "set (drop 1 t) = (set t - {Min (set t)})"
-  using min_list_ordered assms List.finite_set One_nat_def drop_0 drop_Suc_Cons length_0_conv 
-    less_numeral_extra(3) set_empty set_remove1_eq sorted_list_of_set.idem_if_sorted_distinct 
-    sorted_list_of_set.sorted_key_list_of_set_remove sorted_list_of_set_nonempty
-  by metis
-
-lemma Cons_set:
-  assumes "sorted (x#xs)" "distinct (x#xs)"
-  shows "set xs = (set (x#xs) - {Min (set (x#xs))})"
-  using Diff_insert_absorb assms distinct.simps(2) length_pos_if_in_set list.set_intros(1) 
-    list.simps(15) min_list_ordered nth_Cons_0 
-  by metis
-
-value "sort_key fst [(5,a),(2,b),(10,c)]::(real\<times>'v) list"
-
-lemma cUntil_recurse:
-  fixes p x y :: real and t :: "(real\<times>'v::real_vector) list" and c1 c2 :: "'v constraint"
-  assumes "valid_signal t" "x\<ge>0" "y\<ge>0"
-  shows "evals p t (cUntil x y c1 c2) = (if x<0 \<or> y<0 \<or> card {z \<in> fst ` set t. p \<le> z} = 0 then False
-      else (if card {z \<in> fst ` set t. p \<le> z} = 1 then 
-        (evals (sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!0) t c1 
-          \<and> x = 0 
-          \<and> evals (sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!0) t c2)
-      else 
-        ((evals (sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!0) t c1 
-          \<and> x = 0 
-          \<and> evals (sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!0) t c2) 
-        \<or> ((evals (sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!0) t c1) 
-          \<and> (evals (sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!1) t 
-              (cUntil (max (x-((sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!1) 
-                - (min (sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!0) p))) 0) 
-                (y-((sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!1) 
-                  - min (sort_key id (filter (\<lambda>z. z \<ge> p) (map fst t))!0) p)) c1 c2))))))"
+  fixes foo bar :: "('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> bool" 
+  assumes "\<And>P t. foo P t = (\<exists>n<length t. P (t!n))" and "\<And>P. bar P [] = False" 
+    and "\<And>P x xs. bar P (x#xs) = (P x \<or> bar P xs)"
+  shows "\<And>P xs. foo P xs = bar P xs"
 proof -
-  {assume onew:"evals p t (cUntil x y c1 c2)"
-    have "(if x<0 \<or> y<0 \<or> card {z \<in> fst ` set t. p+x \<le> z} = 0 then False
-      else (if card {z \<in> fst ` set t. p+x \<le> z} = 1 then 
-        evals p t c2
-      else ((evals (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c2) \<or>
-          ((evals (Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) t c1) \<and>
-            (evals (Min (((set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))) - {Min (set (filter (\<lambda>z. z \<ge> p+x) (map fst t)))})) t 
-              (cUntil 0 (y-p-x) c1 c2))))))"
-    proof (insert onew, induct t)
+  {fix P :: "'a \<Rightarrow> bool" and xs :: "'a list"
+    have "foo P xs = bar P xs"
+    proof (induct xs)
       case Nil
       then show ?case 
+        using assms 
         by force
     next
-      case (Cons w ws)
-      show ?case
-      proof (cases "evals p ws (cUntil x y c1 c2)")
-        case True
-        then have fp:"finite' {p'. (p'\<ge>p+x \<and> p'\<le>p+y \<and> (\<exists>n<length ws. fst (ws!n) = p') \<and> evals p' ws c2 
-          \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length ws. fst (ws!n) = p'') \<longrightarrow> evals p'' ws c1))}"
-          by auto
-        then obtain p' where p'_defn:"p' = Min {p'. (p'\<ge>p+x \<and> p'\<le>p+y \<and> (\<exists>n<length ws. fst (ws!n) = p') \<and> evals p' ws c2 
-          \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length ws. fst (ws!n) = p'') \<longrightarrow> evals p'' ws c1))}"
-          by fastforce
-        then have "(p'\<ge>p+x \<and> p'\<le>p+y \<and> (\<exists>n<length ws. fst (ws!n) = p') \<and> evals p' ws c2 
-          \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length ws. fst (ws!n) = p'') \<longrightarrow> evals p'' ws c1))"
-          using fp Min_in
-          by blast
-        then have "\<nexists>p'2. p'2<p' \<and> p'2\<in>{p'. (p'\<ge>p+x \<and> p'\<le>p+y \<and> (\<exists>n<length ws. fst (ws!n) = p') \<and> evals p' ws c2 
-          \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length ws. fst (ws!n) = p'') \<longrightarrow> evals p'' ws c1))}"
-          using p'_defn fp Min_le
-          by (smt (verit, best))
-        then have "if x < 0 \<or> y < 0 \<or> card {z \<in> fst ` set ws. p + x \<le> z} = 0 then False
-          else if card {z \<in> fst ` set ws. p + x \<le> z} = 1 then evals p ws c2
-               else evals (Min (set (filter ((\<le>) (p + x)) (map fst ws)))) ws c2 \<or>
-                    evals (Min (set (filter ((\<le>) (p + x)) (map fst ws)))) ws c1 \<and>
-                    evals
-                     (Min (set (filter ((\<le>) (p + x)) (map fst ws)) -
-                           {Min (set (filter ((\<le>) (p + x)) (map fst ws)))}))
-                     ws (cUntil 0 (y - p - x) c1 c2)"
-          using Cons True
-          by blast
-        then 
+      case (Cons y ys)
+      then show ?case
+        using assms One_nat_def drop0 drop_Suc_Cons length_greater_0_conv list.discI nth_Cons_0 
+          recurse_length
+        by (metis (no_types, lifting))
+    qed}
+  then show "\<And>P xs. foo P xs = bar P xs"
+    by simp
+qed
 
-          
-            
+lemma recurse_length_all:
+  fixes foo bar :: "('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> bool"
+  assumes "\<And>t P. foo P t = (\<forall>n<length t. P (t!n))" and "\<And>P. bar P [] = True"
+    and "\<And>x xs P. bar P (x#xs) = (P x \<and> bar P xs)"
+  shows "foo P xs = bar P xs"
+proof (induct xs)
+  case Nil
+  then show ?case 
+    using assms 
+    by force
+next
+  case (Cons x xs)
+  then show ?case
+    using assms less_Suc_eq_0_disj length_Cons nth_Cons_0 nth_Cons_Suc 
+    by (smt (verit))
+qed
+
+lemma recurse_length_alt_Pdep: 
+  fixes foo bar :: "('a list \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> 'a list \<Rightarrow> bool" 
+  assumes "\<And>P t t'. foo P t t' = (\<exists>n<length t. (P t') (t!n))" and "\<And>P t'. bar P [] t' = False" 
+    and "\<And>P x xs t'. bar P (x#xs) t' = ((P t') x \<or> bar P xs t')"
+  shows "foo P xs t' = bar P xs t'"
+proof (induct xs)
+  case Nil
+  then show ?case 
+    using assms 
+    by simp
+next
+  case (Cons y ys)
+  then show ?case
+    using assms One_nat_def drop0 drop_Suc_Cons length_greater_0_conv list.discI nth_Cons_0 
+      recurse_length
+    by (metis (no_types, lifting))
+qed
+
+lemma equiv_Until_semantics:
+  fixes t :: "(real\<times>'v::real_vector) list" and p x y :: real
+    and c1 c2 :: "'v constraint"
+  shows "evals p t (cUntil x y c1 c2) = (\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y 
+      \<and> evals (fst z) t c2 \<and> (\<forall>m<length t. (\<lambda>z'. evals (fst z') t c1 
+        \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))"
+  using evals.simps(4)
+  by (smt (verit))
+
+fun recurs_exist_list_Pdep :: "('a list \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> 'a list \<Rightarrow> bool" where 
+  "recurs_exist_list_Pdep P [] t = False"
+| "recurs_exist_list_Pdep P (x#xs) t = ((P t) x \<or> recurs_exist_list_Pdep P xs t)"
+
+fun recurs_all_list :: "('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> bool" where 
+  "recurs_all_list P [] = True"
+| "recurs_all_list P (x#xs) = (P x \<and> recurs_all_list P xs)"
+
+lemma recurse_evals_Until_equiv:
+  fixes p x y :: real and t :: "(real\<times>'v::real_vector) list"
+  shows "evals p t (cUntil x y c1 c2)
+      = recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
+      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t"
+proof -
+  have 1:"(\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
+      \<and> (\<forall>m<length t. (\<lambda>z'. evals (fst z') t c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))
+      = recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
+      \<and> (\<forall>m<length t'. (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t'!m))) t t"
+  using recurs_exist_list_Pdep.simps recurse_length_alt_Pdep [where ?P="\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
+      \<and> (\<forall>m<length t'. (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t'!m))" 
+        and ?foo="\<lambda>P t t'. \<exists>n<length t. P t' (t!n)" and ?bar="recurs_exist_list_Pdep"]
+  by auto
+  {fix t' :: "(real\<times>'v) list" and z::"(real\<times>'v)"
+    have "(\<forall>m<length t'. (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t'!m))
+      = (recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t')"
+      using recurs_all_list.simps recurse_length_all [where 
+          ?foo="\<lambda>P t'. \<forall>m<length t'. P (t'!m)" 
+          and ?P="\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)"
+          and ?bar="recurs_all_list" and ?xs="t'"]
+      by auto}
+  then have "\<And>t' z. (\<forall>m<length t'. (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t'!m))
+      = (recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t')"
+    by force
+  then have "(\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
+      \<and> (\<forall>m<length t. (\<lambda>z'. evals (fst z') t c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))
+      = recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
+      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t"
+    using 1
+    by force
+  then show ?thesis
+    using equiv_Until_semantics
+    by blast
+qed
 
 function robust :: "real \<Rightarrow> (real \<times> 'v::real_vector) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
 "robust p t (cMu f r) \<gamma> = (if (\<exists>n<length t. fst (t!n) = p) then f (find_time t p) - r else -1)"
