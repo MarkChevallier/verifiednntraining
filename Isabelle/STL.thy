@@ -3,16 +3,16 @@ theory STL
 
 begin
 
-datatype 'v::real_vector constraint = cMu "'v \<Rightarrow> real" real | cNot "'v constraint" 
+datatype 'v constraint = cMu "'v \<Rightarrow> real" real | cNot "'v constraint" 
   | cAnd "'v constraint" "'v constraint" | cUntil real real "'v constraint" "'v constraint"
 
-fun subconstraint :: "'v::real_vector constraint \<Rightarrow> 'v constraint \<Rightarrow> bool" where
+fun subconstraint :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> bool" where
 "subconstraint c (cMu f r) = (c = cMu f r)"
 | "subconstraint c (cNot c1) = (c = (cNot c1) \<or> c = c1 \<or> subconstraint c c1)"
 | "subconstraint c (cAnd c1 c2) = (c = (cAnd c1 c2) \<or> c = c1 \<or> c = c2 \<or> subconstraint c c1 \<or> subconstraint c c2)"
 | "subconstraint c (cUntil x y c1 c2) = (c = (cUntil x y c1 c2) \<or> c = c1 \<or> c = c2 \<or> subconstraint c c1 \<or> subconstraint c c2)"
 
-fun valid_constraint :: "real \<Rightarrow> 'v::real_vector constraint \<Rightarrow> bool" where
+fun valid_constraint :: "real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
 "valid_constraint l (cMu f r) = (l \<ge> 0)"
 | "valid_constraint l (cNot c) = (valid_constraint l c)"
 | "valid_constraint l (cAnd c1 c2) = ((valid_constraint l c1 \<and> valid_constraint l c2))"
@@ -52,7 +52,7 @@ next
 qed
 
 lemma vc_longer:
-  fixes l r :: real and c :: "'v::real_vector constraint"
+  fixes l r :: real and c :: "'v constraint"
   assumes "r\<ge>0" "valid_constraint l c"
   shows "valid_constraint (l+r) c"
 proof (insert assms, induct c arbitrary:  l r)
@@ -92,7 +92,7 @@ next
 qed
 
 lemma vc_subconstraint:
-  fixes l :: real and c c1 :: "'v::real_vector constraint"
+  fixes l :: real and c c1 :: "'v constraint"
   assumes "valid_constraint l c" "subconstraint c' c"
   shows "valid_constraint l c'"
 proof (insert assms, induction c)
@@ -117,7 +117,7 @@ next
     by metis
 qed
 
-fun evalvc :: "(real \<Rightarrow> 'v::real_vector) \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
+fun evalvc :: "(real \<Rightarrow> 'v) \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
 "evalvc t l (cMu f r) = (valid_constraint l (cMu f r) \<and> ((f (t 0)) > r))"
 | "evalvc t l (cNot c) = (valid_constraint l (cNot c) \<and> (\<not>(evalvc t l c)))"
 | "evalvc t l (cAnd c1 c2) = (valid_constraint l (cAnd c1 c2) \<and> 
@@ -126,7 +126,7 @@ fun evalvc :: "(real \<Rightarrow> 'v::real_vector) \<Rightarrow> real \<Rightar
   (valid_constraint l (cUntil x y c1 c2) \<and> (\<exists>t'\<ge>x. t'\<le>y \<and> evalvc (\<lambda>r. t (r+t')) (l-t') c2 
     \<and> (\<forall>t''. t''\<ge>0\<and>t''\<le>t' \<longrightarrow> evalvc (\<lambda>r. t (r+t'')) (l-t'') c1)))"
 
-fun eval :: "(real \<Rightarrow> 'v::real_vector) \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
+fun eval :: "(real \<Rightarrow> 'v) \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
 "eval t l (cMu f r) = ((f (t 0)) > r)"
 | "eval t l (cNot c) = (\<not>(eval t l c))"
 | "eval t l (cAnd c1 c2) = ((eval t l c1) \<and> (eval t l c2))"
@@ -139,7 +139,7 @@ lemma evalvc_vc:
   using evalvc.simps assms constraint.exhaust 
   by metis
 
-definition cTrue :: "'v::real_vector constraint" where
+definition cTrue :: "'v constraint" where
 "cTrue = cMu (\<lambda>r. 1) 0"
 
 lemma cTrue_vc:"valid_constraint l cTrue = (l\<ge>0)"
@@ -154,7 +154,7 @@ lemma cTrue_eval:"eval t l cTrue"
   using cTrue_def eval.simps(1) zero_less_one
   by metis
 
-definition cOr :: "'v::real_vector constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+definition cOr :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
 "cOr c1 c2 = cNot (cAnd (cNot c1) (cNot c2))"
 
 lemma cOr_vc:"valid_constraint l (cOr c1 c2) = (valid_constraint l c1 \<and> valid_constraint l c2)"
@@ -169,7 +169,7 @@ lemma cOr_eval:"eval t l (cOr c1 c2) = (eval t l c1 \<or> eval t l c2)"
   using cOr_def eval.simps(2,3) 
   by metis
 
-definition cEventually :: "real \<Rightarrow> real \<Rightarrow> 'v::real_vector constraint \<Rightarrow> 'v constraint" where
+definition cEventually :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
 "cEventually x y c = cUntil x y cTrue c"
 
 lemma cEventually_vc: "valid_constraint l (cEventually x y c) =   
@@ -214,7 +214,7 @@ lemma cEventually_eval: "eval t l (cEventually x y c) = (\<exists>t'\<ge>x. t'\<
   using cTrue_eval eval.simps(4) cEventually_def
   by metis
 
-definition cAlways :: "real \<Rightarrow> real \<Rightarrow> 'v::real_vector constraint \<Rightarrow> 'v constraint" where
+definition cAlways :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
 "cAlways x y c = cNot (cEventually x y (cNot c))"
 
 lemma cAlways_vc:"valid_constraint l (cAlways x y c) = 
