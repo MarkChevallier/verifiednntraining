@@ -3,147 +3,37 @@ theory STL_sample
 
 begin
 
-fun valid_constraints :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"valid_constraints p t (cMu f r) = (p\<in>set (map fst t))"
-| "valid_constraints p t (cNot c) = (valid_constraints p t c)"
-| "valid_constraints p t (cAnd c1 c2) = (valid_constraints p t c1 \<and> valid_constraints p t c2)"
-| "valid_constraints p t (cUntil x y c1 c2) = (x \<ge> 0 \<and> y \<ge> 0)"
+fun recurs_exist_list :: "('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> bool" where 
+  "recurs_exist_list P [] = False"
+| "recurs_exist_list P (x#xs) = (P x \<or> recurs_exist_list P xs)"
 
-definition valid_signal :: "(real \<times> 'v) list \<Rightarrow> bool" where
-"valid_signal xs = distinct (map fst xs)"
-
-(*
-definition first_time :: "(real \<times> 'v) list \<Rightarrow> real" where
-"first_time xs = Min (set (map fst xs))"
-
-definition at_time :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> real" where
-"at_time p xs = Min (set (filter (\<lambda>x. x\<ge>p) (map fst xs)))"
-
-definition next_time :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> real" where
-"next_time p xs = Min (set (filter (\<lambda>x. x>p) (map fst xs)))"
-*)
-
-definition find_time :: "(real \<times> 'v) list \<Rightarrow> real \<Rightarrow> 'v" where
-"find_time xs r = (snd (the (find (\<lambda>x. fst x = r) xs)))"
-
-(*
-lemma signal_induct: 
-  "P (first_time xs) \<Longrightarrow> (\<And>p. P p \<Longrightarrow> P (next_time p xs)) \<Longrightarrow> (\<And>p. p\<in>set(map fst xs) \<Longrightarrow> P p)"
-proof (induct xs rule: list.induct)
+lemma recurs_exist_list_equiv:"(\<exists>n<length t. P (t!n)) = (recurs_exist_list P t)"
+proof (induct t)
   case Nil
-  then show ?case by simp
-next
+  then show ?case 
+    by auto
   case (Cons x xs)
   then show ?case
-  proof (cases "fst x = first_time (x#xs)")
+  proof (cases "P x")
     case True
-    then have "P (first_time (x#xs))"
-      using Cons 
-      by blast
-    then have "\<And>p. p\<in>set(map fst xs) \<Longrightarrow> P p"
-      using Cons 
-*)    
-
-fun evals :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"evals p t (cMu f r) = (if (\<exists>n<length t. fst (t!n) = p) then (f (find_time t p) > r) else False)"
-| "evals p t (cNot c) = (\<not>(evals p t c))"
-| "evals p t (cAnd c1 c2) = ((evals p t c1) \<and> (evals p t c2))"
-| "evals p t (cUntil x y c1 c2) = ((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
-    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1)))"
-
-lemma cTrue_valid_constraints:
-  "valid_constraints p t cTrue = (p\<in>set (map fst t))"
-  using cTrue_def valid_constraints.simps(1)
-  by metis
-
-lemma cTrue_evals:"evals p t cTrue = (\<exists>n<length t. fst (t!n) = p)"
-  using cTrue_def evals.simps(1) zero_less_one
-  by metis
-
-lemma cOr_valid_constraints:
-  "valid_constraints p t (cOr c1 c2) = (valid_constraints p t c1 \<and> valid_constraints p t c2)"
-  using cOr_def valid_constraints.simps(2,3)
-  by metis
-
-lemma cOr_evals:"evals p t (cOr c1 c2) = (evals p t c1 \<or> evals p t c2)"
-  using cOr_def evals.simps(2,3)
-  by metis
-
-lemma cEventually_valid_constraints:
-  "valid_constraints p t (cEventually x y c) = (x\<ge>0 \<and> y\<ge>0)"
-  using cEventually_def valid_constraints.simps(4)
-  by metis
-
-lemma cEventually_evals: "evals p t (cEventually x y c) = (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c)"
-  using evals.simps(4) cTrue_evals cEventually_def length_map nth_map nth_mem
-  by (smt (verit))
-
-lemma cAlways_valid_constraints: "valid_constraints p t (cAlways x y c) = (x\<ge>0 \<and> y\<ge>0)"
-  using cAlways_def valid_constraints.simps(2) cEventually_valid_constraints
-  by metis
-
-lemma cAlways_evals: "evals p t (cAlways x y c) = 
-  (\<forall>p'. p'\<ge>p+x\<and>p'\<le>p+y\<and> (\<exists>n<length t. fst (t!n) = p') \<longrightarrow> evals p' t c)"
-proof -
-  have "evals p t (cAlways x y c) = evals p t (cNot (cEventually x y (cNot c)))"
-    using cAlways_def
-    by metis
-  then have "evals p t (cAlways x y c) = (\<not>(\<exists>p'\<ge>p + x. p' \<le> p + y \<and> (\<exists>n<length t. fst (t ! n) = p') \<and> evals p' t (cNot c)))"
-    using cEventually_evals evals.simps(2)
-    by metis
-  then have "evals p t (cAlways x y c) = (\<forall>p'\<ge>p + x. \<not>(p' \<le> p + y \<and> (\<exists>n<length t. fst (t ! n) = p') \<and> evals p' t (cNot c)))"
-    by blast
-  then have "evals p t (cAlways x y c) = (\<forall>p'\<ge>p + x. \<not>(p' \<le> p + y \<and> (\<exists>n<length t. fst (t ! n) = p') \<and> \<not>(evals p' t c)))"
-    using evals.simps(2) 
-    by simp
-  then show ?thesis
-    by blast
+    then show ?thesis 
+      by force
+  next
+    case False
+    then show ?thesis
+    proof (cases "recurs_exist_list P xs")
+      case True
+      then show ?thesis 
+        using Cons 
+        by force
+    next
+      case False
+      then show ?thesis
+        using Cons \<open>\<not>(P x)\<close>
+        by (metis in_set_conv_nth recurs_exist_list.simps(2) set_ConsD)
+    qed
+  qed
 qed
-
-(* definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real\<times>'v) list \<Rightarrow> (real\<times>'v) list" where
-"clip_timeline x y t = sort_key (\<lambda>z. fst z) (filter (\<lambda>z. fst z \<ge> x \<and> fst z \<le> y) t)"
-
-lemma tst:"length t > 0 \<longrightarrow> (sort_key id t)!0 = Min (set t)"
-proof -
-  {assume "length t > 0"
-    then have fin:"finite (set t) \<and> set t \<noteq> {}"
-      by blast
-    have "sorted (sort_key id t)"
-      by (metis list.map_id sorted_sort_key)
-    have "(sort_key id t)!0 = Min (set t)"
-    proof (rule ccontr)
-      assume "(sort_key id t)!0 \<noteq> Min (set t)"
-      then have "\<exists>n\<in>(set t). n < (sort_key id t)!0"
-        using fin Min_in Min_le \<open>0 < length t\<close> finite_has_minimal length_sort linorder_not_le 
-          nth_mem set_sort
-        by metis
-      then show False
-        using \<open>sorted (sort_key id t)\<close> in_set_conv_nth linorder_not_le not_less_zero set_sort 
-          sorted_nth_mono 
-        by metis
-    qed}
-  then show ?thesis
-    by simp
-qed
-        
-
-lemma clip_timeline_0:
-  assumes "\<exists>n<length t. fst (t!n) \<ge> x \<and> fst (t!n) \<le> y"
-  shows "fst ((clip_timeline x y t)!0) = Min (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t)))"
-proof -
-  have "set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t)) = {r. r \<in> set (map fst t) \<and> r\<ge>x \<and> r\<le>y}"
-    by force
-  then have "finite (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) 
-      \<and> (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) \<noteq> {}"
-    using assms 
-    by fastforce
-  then have "Min (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) \<in> set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))"
-    using Min_in
-    by blast
-  then have "\<forall>n<length (clip_timeline x y t). fst ((clip_timeline x y t)!0) \<le> fst ((clip_timeline x y t)!n)"
-    using clip_timeline_def sort_key_def
-    oops
-*)
 
 lemma recurse_length_until:
   fixes P P' :: "'a \<Rightarrow> bool" and t :: "'a list"
@@ -344,15 +234,6 @@ next
     by (metis (no_types, lifting))
 qed
 
-lemma equiv_Until_semantics:
-  fixes t :: "(real\<times>'v) list" and p x y :: real
-    and c1 c2 :: "'v constraint"
-  shows "evals p t (cUntil x y c1 c2) = (\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y 
-      \<and> evals (fst z) t c2 \<and> (\<forall>m<length t. (\<lambda>z'. evals (fst z') t c1 
-        \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))"
-  using evals.simps(4)
-  by (smt (verit))
-
 fun recurs_exist_list_Pdep :: "('a list \<Rightarrow> 'a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> 'a list \<Rightarrow> bool" where 
   "recurs_exist_list_Pdep P [] t = False"
 | "recurs_exist_list_Pdep P (x#xs) t = ((P t) x \<or> recurs_exist_list_Pdep P xs t)"
@@ -389,11 +270,68 @@ fun recurs_all_list_real :: "('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rig
   "recurs_all_list_real P [] \<gamma> = 1"
 | "recurs_all_list_real P (x#xs) \<gamma> = Min_gamma_comp \<gamma> (if P x then 1 else -1) (recurs_all_list_real P xs \<gamma>)"
 
+fun valid_constraints :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
+"valid_constraints p t (cMu f r) = (p\<in>set (map fst t))"
+| "valid_constraints p t (cNot c) = (valid_constraints p t c)"
+| "valid_constraints p t (cAnd c1 c2) = (valid_constraints p t c1 \<and> valid_constraints p t c2)"
+| "valid_constraints p t (cUntil x y c1 c2) = (x \<ge> 0 \<and> y \<ge> 0)"
+
+definition valid_signal :: "(real \<times> 'v) list \<Rightarrow> bool" where
+"valid_signal xs = distinct (map fst xs)"
+
+(*
+definition first_time :: "(real \<times> 'v) list \<Rightarrow> real" where
+"first_time xs = Min (set (map fst xs))"
+
+definition at_time :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> real" where
+"at_time p xs = Min (set (filter (\<lambda>x. x\<ge>p) (map fst xs)))"
+
+definition next_time :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> real" where
+"next_time p xs = Min (set (filter (\<lambda>x. x>p) (map fst xs)))"
+*)
+
+definition find_time :: "(real \<times> 'v) list \<Rightarrow> real \<Rightarrow> 'v" where
+"find_time xs r = (snd (the (find (\<lambda>x. fst x = r) xs)))"
+
+(*
+lemma signal_induct: 
+  "P (first_time xs) \<Longrightarrow> (\<And>p. P p \<Longrightarrow> P (next_time p xs)) \<Longrightarrow> (\<And>p. p\<in>set(map fst xs) \<Longrightarrow> P p)"
+proof (induct xs rule: list.induct)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons x xs)
+  then show ?case
+  proof (cases "fst x = first_time (x#xs)")
+    case True
+    then have "P (first_time (x#xs))"
+      using Cons 
+      by blast
+    then have "\<And>p. p\<in>set(map fst xs) \<Longrightarrow> P p"
+      using Cons 
+*)    
+
+fun evals :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
+"evals p t (cMu f r) = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then (f (find_time t p) > r) else False)"
+| "evals p t (cNot c) = (\<not>(evals p t c))"
+| "evals p t (cAnd c1 c2) = ((evals p t c1) \<and> (evals p t c2))"
+| "evals p t (cUntil x y c1 c2) = recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
+      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t"
+
+lemma equiv_Until_semantics:
+  fixes t :: "(real\<times>'v) list" and p x y :: real
+    and c1 c2 :: "'v constraint"
+  shows "((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
+    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1))) = (\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y 
+      \<and> evals (fst z) t c2 \<and> (\<forall>m<length t. (\<lambda>z'. evals (fst z') t c1 
+        \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))"
+  by (smt (verit))
+
 lemma recurse_evals_Until_equiv:
   fixes p x y :: real and t :: "(real\<times>'v) list"
   shows "evals p t (cUntil x y c1 c2)
-      = recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t"
+      = ((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
+    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1)))"
 proof -
   have 1:"(\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
       \<and> (\<forall>m<length t. (\<lambda>z'. evals (fst z') t c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))
@@ -420,17 +358,117 @@ proof -
       \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t"
     using 1
     by force
+  then have "recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
+      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t
+      = ((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
+    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1)))"
+    using equiv_Until_semantics 
+    by blast
   then show ?thesis
-    using equiv_Until_semantics
+    using evals.simps(4)
+    by simp
+qed
+
+lemma cTrue_valid_constraints:
+  "valid_constraints p t cTrue = (p\<in>set (map fst t))"
+  using cTrue_def valid_constraints.simps(1)
+  by metis
+
+lemma cTrue_evals:"evals p t cTrue = (\<exists>n<length t. fst (t!n) = p)"
+  using cTrue_def evals.simps(1) zero_less_one recurs_exist_list_equiv
+  by (metis (mono_tags, lifting))
+
+lemma cOr_valid_constraints:
+  "valid_constraints p t (cOr c1 c2) = (valid_constraints p t c1 \<and> valid_constraints p t c2)"
+  using cOr_def valid_constraints.simps(2,3)
+  by metis
+
+lemma cOr_evals:"evals p t (cOr c1 c2) = (evals p t c1 \<or> evals p t c2)"
+  using cOr_def evals.simps(2,3)
+  by metis
+
+lemma cEventually_valid_constraints:
+  "valid_constraints p t (cEventually x y c) = (x\<ge>0 \<and> y\<ge>0)"
+  using cEventually_def valid_constraints.simps(4)
+  by metis
+
+lemma cEventually_evals: "evals p t (cEventually x y c) = (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c)"
+  using evals.simps(4) cTrue_evals cEventually_def length_map nth_map nth_mem recurse_evals_Until_equiv
+  by (smt (verit))
+
+lemma cAlways_valid_constraints: "valid_constraints p t (cAlways x y c) = (x\<ge>0 \<and> y\<ge>0)"
+  using cAlways_def valid_constraints.simps(2) cEventually_valid_constraints
+  by metis
+
+lemma cAlways_evals: "evals p t (cAlways x y c) = 
+  (\<forall>p'. p'\<ge>p+x\<and>p'\<le>p+y\<and> (\<exists>n<length t. fst (t!n) = p') \<longrightarrow> evals p' t c)"
+proof -
+  have "evals p t (cAlways x y c) = evals p t (cNot (cEventually x y (cNot c)))"
+    using cAlways_def
+    by metis
+  then have "evals p t (cAlways x y c) = (\<not>(\<exists>p'\<ge>p + x. p' \<le> p + y \<and> (\<exists>n<length t. fst (t ! n) = p') \<and> evals p' t (cNot c)))"
+    using cEventually_evals evals.simps(2)
+    by metis
+  then have "evals p t (cAlways x y c) = (\<forall>p'\<ge>p + x. \<not>(p' \<le> p + y \<and> (\<exists>n<length t. fst (t ! n) = p') \<and> evals p' t (cNot c)))"
+    by blast
+  then have "evals p t (cAlways x y c) = (\<forall>p'\<ge>p + x. \<not>(p' \<le> p + y \<and> (\<exists>n<length t. fst (t ! n) = p') \<and> \<not>(evals p' t c)))"
+    using evals.simps(2) 
+    by simp
+  then show ?thesis
     by blast
 qed
 
+(* definition clip_timeline :: "real \<Rightarrow> real \<Rightarrow> (real\<times>'v) list \<Rightarrow> (real\<times>'v) list" where
+"clip_timeline x y t = sort_key (\<lambda>z. fst z) (filter (\<lambda>z. fst z \<ge> x \<and> fst z \<le> y) t)"
+
+lemma tst:"length t > 0 \<longrightarrow> (sort_key id t)!0 = Min (set t)"
+proof -
+  {assume "length t > 0"
+    then have fin:"finite (set t) \<and> set t \<noteq> {}"
+      by blast
+    have "sorted (sort_key id t)"
+      by (metis list.map_id sorted_sort_key)
+    have "(sort_key id t)!0 = Min (set t)"
+    proof (rule ccontr)
+      assume "(sort_key id t)!0 \<noteq> Min (set t)"
+      then have "\<exists>n\<in>(set t). n < (sort_key id t)!0"
+        using fin Min_in Min_le \<open>0 < length t\<close> finite_has_minimal length_sort linorder_not_le 
+          nth_mem set_sort
+        by metis
+      then show False
+        using \<open>sorted (sort_key id t)\<close> in_set_conv_nth linorder_not_le not_less_zero set_sort 
+          sorted_nth_mono 
+        by metis
+    qed}
+  then show ?thesis
+    by simp
+qed
+        
+
+lemma clip_timeline_0:
+  assumes "\<exists>n<length t. fst (t!n) \<ge> x \<and> fst (t!n) \<le> y"
+  shows "fst ((clip_timeline x y t)!0) = Min (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t)))"
+proof -
+  have "set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t)) = {r. r \<in> set (map fst t) \<and> r\<ge>x \<and> r\<le>y}"
+    by force
+  then have "finite (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) 
+      \<and> (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) \<noteq> {}"
+    using assms 
+    by fastforce
+  then have "Min (set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))) \<in> set (filter (\<lambda>z. z\<ge>x \<and> z\<le>y) (map fst t))"
+    using Min_in
+    by blast
+  then have "\<forall>n<length (clip_timeline x y t). fst ((clip_timeline x y t)!0) \<le> fst ((clip_timeline x y t)!n)"
+    using clip_timeline_def sort_key_def
+    oops
+*)
+
 fun robust :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
-"robust p t (cMu f r) \<gamma> = (if (\<exists>n<length t. fst (t!n) = p) then f (find_time t p) - r else -1)"
+"robust p t (cMu f r) \<gamma> = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then f (find_time t p) - r else -1)"
 | "robust p t (cNot c) \<gamma> = - (robust p t c \<gamma>)"
 | "robust p t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust p t c1 \<gamma>) (robust p t c2 \<gamma>)"
 | "robust p t (cUntil x y c1 c2) \<gamma> = recurs_exist_list_Pdep_real (\<lambda>t' z. if (fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') then 1 else -1) t t \<gamma>"
+      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') then 1::real else -1) t t \<gamma>"
 
 lemma robust_sound_0:
   shows "((robust p t c 0 > 0) \<longrightarrow> (evals p t c)) 
@@ -438,7 +476,8 @@ lemma robust_sound_0:
 proof (induct c)
   case cMu 
   then show ?case
-    by force
+    using recurs_exist_list_equiv
+    by auto
 next
   case cNot
   then show ?case 
@@ -450,11 +489,11 @@ next
 next
   case cUntil
   then show ?case
-    using recurs_exist_list_Pdep_real_sound_0 recurse_evals_Until_equiv robust.simps(4)
+    using recurs_exist_list_Pdep_real_sound_0 evals.simps(4) robust.simps(4)
     by (smt (verit))
 qed    
 
-export_code robust
+export_code evals robust
  in OCaml
   module_name STLLoss
 
