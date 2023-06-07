@@ -246,6 +246,38 @@ fun recurs_exist_list_Pdep_real :: "('a list \<Rightarrow> 'a \<Rightarrow> real
   "recurs_exist_list_Pdep_real P [] t \<gamma> = -1"
 | "recurs_exist_list_Pdep_real P (x#xs) t \<gamma> = Max_gamma_comp \<gamma> (recurs_exist_list_Pdep_real P xs t \<gamma>) ((P t) x)"
 
+fun recurs_release :: "('a \<Rightarrow> bool) \<Rightarrow> ('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rightarrow> bool" where
+  "recurs_release P P' [] = False"
+| "recurs_release P P' (x#xs) = ((P x \<and> P' x) \<or> ((P' x) \<and> recurs_release P P' xs))"
+
+fun recurs_release_real :: "('a \<Rightarrow> real \<Rightarrow> real) \<Rightarrow> ('a \<Rightarrow> real \<Rightarrow> real) \<Rightarrow> 'a list \<Rightarrow> real \<Rightarrow> real" where
+  "recurs_release_real P P' [] \<gamma> = -1"
+| "recurs_release_real P P' (x#xs) \<gamma> = (Max_gamma_comp \<gamma> (Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>))
+      (Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>)))"
+
+lemma recurs_release_real_sound_0:
+  assumes "\<And>z. Pr z 0 > 0 \<longrightarrow> P z" "\<And>z. Pr z 0 < 0 \<longrightarrow> \<not>(P z)"
+      "\<And>z. P'r z 0 > 0 \<longrightarrow> P' z" "\<And>z. P'r z 0 < 0 \<longrightarrow> \<not>(P' z)"
+  shows "(recurs_release_real Pr P'r t 0 > 0 \<longrightarrow> recurs_release P P' t)"
+      "recurs_release_real Pr P'r t 0 < 0 \<longrightarrow> \<not>(recurs_release P P' t)"
+proof (induct t)
+  case Nil
+  then show "(recurs_release_real Pr P'r [] 0 > 0 \<longrightarrow> recurs_release P P' [])"
+      "recurs_release_real Pr P'r [] 0 < 0 \<longrightarrow> \<not>(recurs_release P P' [])"
+    by simp+
+next
+  case (Cons x xs)
+  have 1:"recurs_release_real Pr P'r (x#xs) 0 = (max (min (Pr x 0) (P'r x 0)) 
+    (min (P'r x 0) (recurs_release_real Pr P'r xs 0)))"
+    by force
+  then show "recurs_release_real Pr P'r (x#xs) 0 > 0 \<longrightarrow> recurs_release P P' (x#xs)"
+    using Cons assms(1,3)
+    by force
+  then show "recurs_release_real Pr P'r (x#xs) 0 < 0 \<longrightarrow> \<not>(recurs_release P P' (x#xs))"
+    using Cons assms(2,4)
+    by force
+qed
+
 lemma recurs_exist_list_Pdep_real_sound_0:
   assumes "\<And>t x. P t x > 0 \<longrightarrow> P' t x" "\<And>t x. P t x < 0 \<longrightarrow> \<not>(P' t x)"
   shows "(recurs_exist_list_Pdep_real P xs t 0 > 0) \<longrightarrow> (recurs_exist_list_Pdep P' xs t)"
@@ -277,7 +309,7 @@ fun valid_constraints :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarro
 | "valid_constraints p t (cUntil x y c1 c2) = (x \<ge> 0 \<and> y \<ge> 0)"
 
 definition valid_signal :: "(real \<times> 'v) list \<Rightarrow> bool" where
-"valid_signal xs = distinct (map fst xs)"
+"valid_signal xs = sorted_wrt (<) (map fst xs)"
 
 (*
 definition first_time :: "(real \<times> 'v) list \<Rightarrow> real" where
@@ -315,8 +347,8 @@ fun evals :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constr
 "evals p t (cMu f r) = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then (f (find_time t p) > r) else False)"
 | "evals p t (cNot c) = (\<not>(evals p t c))"
 | "evals p t (cAnd c1 c2) = ((evals p t c1) \<and> (evals p t c2))"
-| "evals p t (cUntil x y c1 c2) = recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t"
+| "evals p t (cUntil x y c1 c2) 
+  = recurs_release (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2) (\<lambda>z. evals (fst z) t c1 \<or> fst z < p) t"
 
 lemma equiv_Until_semantics:
   fixes t :: "(real\<times>'v) list" and p x y :: real
@@ -327,46 +359,76 @@ lemma equiv_Until_semantics:
         \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))"
   by (smt (verit))
 
+lemma equiv_Until_semantics_2:
+  fixes t :: "(real\<times>'v) list" and p x y :: real
+    and c1 c2 :: "'v constraint"
+  assumes "valid_signal t" "x>0" "y>0"
+  shows "((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
+    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1))) 
+    = (\<exists>n<length t. fst (t!n) \<ge> p+x \<and> fst (t!n) \<le> p+y \<and> evals (fst (t!n)) t c2
+      \<and> (\<forall>m\<le>n. evals (fst (t!m)) t c1 \<or> fst (t!m) < p))"
+proof -
+  have "\<And>P. \<And>n::nat. n<length t \<Longrightarrow> (\<forall>m<length t. P (t!m) \<or> m > n) = (\<forall>m\<le>n. P (t!m))"
+    by (meson dual_order.trans linorder_not_less)
+  then have 0:"\<And>P P'. (\<exists>n<length t. P' (t!n) \<and> (\<forall>m<length t. P (t!m) \<or> m > n))
+      = (\<exists>n<length t. P' (t!n) \<and> (\<forall>m\<le>n. P (t!m)))"
+    by blast
+  have 1:"((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
+    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1)))
+    = (\<exists>n<length t. fst (t!n) \<ge> p+x \<and> fst (t!n) \<le> p+y 
+      \<and> evals (fst (t!n)) t c2 \<and>
+        (\<forall>m<length t. evals (fst (t!m)) t c1 
+        \<or> fst (t!m) < p \<or> fst (t!m) > (fst (t!n))))"
+  proof -
+    have "\<forall>n<length t. fst (t!n) \<ge> p \<longrightarrow> ((\<forall>m<length t. evals (fst (t!m)) t c1 
+        \<or> fst (t!m) < p \<or> fst (t!m) > (fst (t!n))) \<longrightarrow> evals (fst (t!n)) t c1)"
+      by fastforce
+    then show ?thesis
+      using assms(2) equiv_Until_semantics
+      by (smt (verit))
+  qed
+  then show ?thesis
+  proof -
+    have "\<forall>n<length t. (\<forall>m>n. m<length t \<longrightarrow> fst (t!m) > fst (t!n))"
+      using assms(1) valid_signal_def length_map nth_map sorted_wrt_iff_nth_less
+      by metis
+    then have "\<forall>n<length t. (\<forall>m<length t. (m>n) = (fst (t!m) > fst (t!n)))"
+      using linorder_neq_iff order_less_asym'
+      by metis
+    then have "((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
+    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1)))
+    = (\<exists>n<length t. fst (t!n) \<ge> p+x \<and> fst (t!n) \<le> p+y 
+      \<and> evals (fst (t!n)) t c2 \<and>
+        (\<forall>m<length t. evals (fst (t!m)) t c1 
+        \<or> fst (t!m) < p \<or> m > n))"
+      using 1 
+      by blast
+    then show ?thesis
+      using 0 [where ?P'="\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y 
+      \<and> evals (fst z) t c2" and ?P="\<lambda>z. evals (fst z) t c1 \<or> fst z < p"]
+      by presburger
+  qed
+qed
+
 lemma recurse_evals_Until_equiv:
   fixes p x y :: real and t :: "(real\<times>'v) list"
+  assumes "valid_signal t" "x>0" "y>0"
   shows "evals p t (cUntil x y c1 c2)
       = ((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
     \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1)))"
 proof -
-  have 1:"(\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> (\<forall>m<length t. (\<lambda>z'. evals (fst z') t c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))
-      = recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> (\<forall>m<length t'. (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t'!m))) t t"
-  using recurs_exist_list_Pdep.simps recurse_length_alt_Pdep [where ?P="\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> (\<forall>m<length t'. (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t'!m))" 
-        and ?foo="\<lambda>P t t'. \<exists>n<length t. P t' (t!n)" and ?bar="recurs_exist_list_Pdep"]
-  by auto
-  {fix t' :: "(real\<times>'v) list" and z::"(real\<times>'v)"
-    have "(\<forall>m<length t'. (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t'!m))
-      = (recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t')"
-      using recurs_all_list.simps recurse_length_all [where 
-          ?foo="\<lambda>P t'. \<forall>m<length t'. P (t'!m)" 
-          and ?P="\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)"
-          and ?bar="recurs_all_list" and ?xs="t'"]
-      by auto}
-  then have "\<And>t' z. (\<forall>m<length t'. (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t'!m))
-      = (recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t')"
-    by force
-  then have "(\<exists>n<length t. (\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> (\<forall>m<length t. (\<lambda>z'. evals (fst z') t c1 \<or> fst z' < p \<or> fst z' > (fst z)) (t!m))) (t!n))
-      = recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t"
-    using 1
-    by force
-  then have "recurs_exist_list_Pdep (\<lambda>t' z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') t t
-      = ((\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c2 
-    \<and> (\<forall>p''. p''\<ge>p\<and>p''\<le>p'\<and> (\<exists>n<length t. fst (t!n) = p'') \<longrightarrow> evals p'' t c1)))"
-    using equiv_Until_semantics 
-    by blast
+  have "evals p t (cUntil x y c1 c2) 
+      = (\<exists>n<length t. fst (t!n) \<ge> p+x \<and> fst (t!n) \<le> p+y \<and> evals (fst (t!n)) t c2
+        \<and> (\<forall>m\<le>n. fst (t!m) < p \<or> evals (fst (t!m)) t c1))"
+    using recurse_length_release_alt [where ?foo="\<lambda>P P' t. (\<exists>n<length t. P (t ! n) \<and> (\<forall>n'\<le>n. P' (t ! n')))"
+      and ?bar="recurs_release" and ?xs="t" and ?P="\<lambda>z. fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2"
+      and ?P'="\<lambda>z. evals (fst z) t c1 \<or> fst z < p"] evals.simps(4) [where ?p="p" and ?t="t" 
+        and ?c1.0="c1" and ?c2.0="c2" and ?x="x" and ?y="y"]
+    by auto
   then show ?thesis
-    using evals.simps(4)
-    by simp
+    using equiv_Until_semantics_2 [where ?x="x" and ?y="y" and ?t="t" and ?p="p" and ?c1.0="c1" and ?c2.0="c2"] 
+      assms
+    by auto
 qed
 
 lemma cTrue_valid_constraints:
@@ -392,22 +454,26 @@ lemma cEventually_valid_constraints:
   using cEventually_def valid_constraints.simps(4)
   by metis
 
-lemma cEventually_evals: "evals p t (cEventually x y c) = (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c)"
-  using evals.simps(4) cTrue_evals cEventually_def length_map nth_map nth_mem recurse_evals_Until_equiv
+lemma cEventually_evals: 
+  assumes "x>0" "y>0" "valid_signal t"  
+  shows "evals p t (cEventually x y c) = (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c)"
+  using evals.simps(4) cTrue_evals cEventually_def length_map nth_map nth_mem recurse_evals_Until_equiv assms
   by (smt (verit))
 
 lemma cAlways_valid_constraints: "valid_constraints p t (cAlways x y c) = (x\<ge>0 \<and> y\<ge>0)"
   using cAlways_def valid_constraints.simps(2) cEventually_valid_constraints
   by metis
 
-lemma cAlways_evals: "evals p t (cAlways x y c) = 
+lemma cAlways_evals: 
+  assumes "x>0" "y>0" "valid_signal t"  
+  shows "evals p t (cAlways x y c) =
   (\<forall>p'. p'\<ge>p+x\<and>p'\<le>p+y\<and> (\<exists>n<length t. fst (t!n) = p') \<longrightarrow> evals p' t c)"
 proof -
   have "evals p t (cAlways x y c) = evals p t (cNot (cEventually x y (cNot c)))"
     using cAlways_def
     by metis
   then have "evals p t (cAlways x y c) = (\<not>(\<exists>p'\<ge>p + x. p' \<le> p + y \<and> (\<exists>n<length t. fst (t ! n) = p') \<and> evals p' t (cNot c)))"
-    using cEventually_evals evals.simps(2)
+    using cEventually_evals evals.simps(2) assms
     by metis
   then have "evals p t (cAlways x y c) = (\<forall>p'\<ge>p + x. \<not>(p' \<le> p + y \<and> (\<exists>n<length t. fst (t ! n) = p') \<and> evals p' t (cNot c)))"
     by blast
@@ -467,31 +533,145 @@ fun robust :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v const
 "robust p t (cMu f r) \<gamma> = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then f (find_time t p) - r else -1)"
 | "robust p t (cNot c) \<gamma> = - (robust p t c \<gamma>)"
 | "robust p t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust p t c1 \<gamma>) (robust p t c2 \<gamma>)"
-| "robust p t (cUntil x y c1 c2) \<gamma> = recurs_exist_list_Pdep_real (\<lambda>t' z. if (fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') then 1::real else -1) t t \<gamma>"
+| "robust p t (cUntil x y c1 c2) \<gamma> = recurs_release_real 
+    (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p+x)) (Min_gamma_comp \<gamma> ((p+y) - fst z) (robust (fst z) t c2 \<gamma>))) 
+    (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p-fst z)) t \<gamma>"
 
 lemma robust_sound_0:
-  shows "((robust p t c 0 > 0) \<longrightarrow> (evals p t c)) 
-      \<and> ((robust p t c 0 < 0) \<longrightarrow> (\<not>(evals p t c)))"
+  shows "\<And>p. (robust p t c 0 > 0) \<longrightarrow> (evals p t c)" 
+       "\<And>p. (robust p t c 0 < 0) \<longrightarrow> \<not>(evals p t c)"
 proof (induct c)
-  case cMu 
-  then show ?case
+  case (cMu f r)
+  then show "\<And>p. (robust p t (cMu f r) 0 > 0) \<longrightarrow> (evals p t (cMu f r))" 
+       "\<And>p. (robust p t (cMu f r) 0 < 0) \<longrightarrow> \<not>(evals p t (cMu f r))"
     using recurs_exist_list_equiv
-    by auto
+    by auto+
 next
-  case cNot
-  then show ?case 
-    by force
+  case (cNot c)
+  then show "\<And>p. (robust p t (cNot c) 0 > 0) \<longrightarrow> (evals p t (cNot c))" 
+       "\<And>p. (robust p t (cNot c) 0 < 0) \<longrightarrow> \<not>(evals p t (cNot c))" 
+    by force+
 next
-  case cAnd
-  then show ?case
-    by auto
+  case (cAnd c1 c2)
+  then show "\<And>p. (robust p t (cAnd c1 c2) 0 > 0) \<longrightarrow> (evals p t (cAnd c1 c2))" 
+       "\<And>p. (robust p t (cAnd c1 c2) 0 < 0) \<longrightarrow> \<not>(evals p t (cAnd c1 c2))"
+     apply simp
+  proof -
+    {fix p :: real 
+      assume "(robust p t (cAnd c1 c2) 0 < 0)"
+      then have "\<not>(evals p t (cAnd c1 c2))"
+        using cAnd
+        by force}
+    then show "\<And>p. (robust p t (cAnd c1 c2) 0 < 0) \<longrightarrow> \<not>(evals p t (cAnd c1 c2))"
+      by blast
+  qed
 next
-  case cUntil
-  then show ?case
-    using recurs_exist_list_Pdep_real_sound_0 evals.simps(4) robust.simps(4)
-    by (smt (verit))
-qed    
+  case (cUntil x y c1 c2)
+  then show "\<And>p. (robust p t (cUntil x y c1 c2) 0 > 0) \<longrightarrow> (evals p t (cUntil x y c1 c2))" 
+       "\<And>p. (robust p t (cUntil x y c1 c2) 0 < 0) \<longrightarrow> \<not>(evals p t (cUntil x y c1 c2))"
+    unfolding evals.simps(4) robust.simps(4)
+  proof -
+    have U1:"\<And>p z. Min_gamma_comp 0 (fst z - (p+x)) (Min_gamma_comp 0 (p+y - fst z) (robust (fst z) t c2 0)) > 0
+      \<longrightarrow> fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2"
+    proof -
+      {fix z :: "(real\<times>'v)" and p :: real
+        assume "Min_gamma_comp 0 (fst z - (p+x)) (Min_gamma_comp 0 (p+y - fst z) (robust (fst z) t c2 0)) > 0"
+        then have "(fst z - (p+x))>0 \<and> (p+y-fst z) > 0 \<and> (robust (fst z) t c2 0) > 0"
+          by force
+        then have "fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2"
+          using cUntil 
+          by auto}
+      then show "\<And>p z. Min_gamma_comp 0 (fst z - (p+x)) (Min_gamma_comp 0 (p+y - fst z) (robust (fst z) t c2 0)) > 0
+      \<longrightarrow> fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2"
+        by blast
+    qed
+    have U2:"\<And>p z. Min_gamma_comp 0 (fst z - (p+x)) (Min_gamma_comp 0 (p+y - fst z) (robust (fst z) t c2 0)) < 0
+      \<longrightarrow> \<not>(fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2)"
+    proof -
+      {fix z :: "(real\<times>'v)" and p :: real
+        assume "Min_gamma_comp 0 (fst z - (p+x)) (Min_gamma_comp 0 (p+y - fst z) (robust (fst z) t c2 0)) < 0"
+        then have "(fst z - (p+x)) < 0 \<or> (p+y-fst z) < 0 \<or> (robust (fst z) t c2 0) < 0"
+          by auto
+        then have "\<not>(fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2)"
+          using cUntil 
+          by auto}
+      then show "\<And>p z. Min_gamma_comp 0 (fst z - (p+x)) (Min_gamma_comp 0 (p+y - fst z) (robust (fst z) t c2 0)) < 0
+      \<longrightarrow> \<not>(fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2)"
+        by blast
+    qed
+    have U3:"\<And>p z. Max_gamma_comp 0 (robust (fst z) t c1 0) (p-fst z) > 0
+      \<longrightarrow> evals (fst z) t c1 \<or> fst z < p"
+    proof -
+      {fix z :: "(real\<times>'v)" and p :: real
+        assume "Max_gamma_comp 0 (robust (fst z) t c1 0) (p-fst z) > 0"
+        then have "(robust (fst z) t c1 0) > 0 \<or> (p-fst z) > 0"
+          by auto
+        then have "(evals (fst z) t c1 \<or> fst z < p)"
+          using cUntil 
+          by auto}
+      then show "\<And>p z. Max_gamma_comp 0 (robust (fst z) t c1 0) (p-fst z) > 0
+      \<longrightarrow> evals (fst z) t c1 \<or> fst z < p"
+        by blast
+    qed
+    have U4:"\<And>p z. Max_gamma_comp 0 (robust (fst z) t c1 0) (p-fst z) < 0
+      \<longrightarrow> \<not>(evals (fst z) t c1 \<or> fst z < p)"
+    proof -
+      {fix z :: "(real\<times>'v)" and p :: real
+        assume "Max_gamma_comp 0 (robust (fst z) t c1 0) (p-fst z) < 0"
+        then have "(robust (fst z) t c1 0) < 0 \<and> (p-fst z) < 0"
+          by auto
+        then have "\<not>(evals (fst z) t c1 \<or> fst z < p)"
+          using cUntil 
+          by simp}
+      then show "\<And>p z. Max_gamma_comp 0 (robust (fst z) t c1 0) (p-fst z) < 0
+      \<longrightarrow> \<not>(evals (fst z) t c1 \<or> fst z < p)"
+        by blast
+    qed
+    then show "(\<And>p. 0 < recurs_release_real
+               (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
+               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 \<longrightarrow>
+          recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2) (\<lambda>z. evals (fst z) t c1 \<or> fst z < p)
+           t)" 
+       "(\<And>p. recurs_release_real
+           (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
+           (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0
+          < 0 \<longrightarrow>
+          \<not> recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2)
+              (\<lambda>z. evals (fst z) t c1 \<or> fst z < p) t)"
+    proof -
+      {fix p :: real
+        have "0 < recurs_release_real
+               (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
+               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 \<longrightarrow>
+          recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2) (\<lambda>z. evals (fst z) t c1 \<or> fst z < p)
+           t"
+          "recurs_release_real
+           (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
+           (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0
+          < 0 \<longrightarrow>
+          \<not> recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2)
+              (\<lambda>z. evals (fst z) t c1 \<or> fst z < p) t"
+          using U1 U2 U3 U4 recurs_release_real_sound_0
+            [where ?Pr="\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>))" 
+              and ?P'r="\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)"
+              and ?P="\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2"
+              and ?P'="\<lambda>z. evals (fst z) t c1 \<or> fst z < p" and ?t="t"]
+          by blast+}
+      then show "(\<And>p. 0 < recurs_release_real
+                   (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
+                   (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 \<longrightarrow>
+              recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2) (\<lambda>z. evals (fst z) t c1 \<or> fst z < p)
+               t)" 
+           "(\<And>p. recurs_release_real
+               (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
+               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0
+              < 0 \<longrightarrow>
+              \<not> recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2)
+                  (\<lambda>z. evals (fst z) t c1 \<or> fst z < p) t)"
+        by blast+
+    qed
+  qed
+qed
 
 export_code evals robust
  in OCaml

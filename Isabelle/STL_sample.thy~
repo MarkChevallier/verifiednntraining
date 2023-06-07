@@ -393,7 +393,7 @@ lemma cEventually_valid_constraints:
   by metis
 
 lemma cEventually_evals: "evals p t (cEventually x y c) = (\<exists>p'\<ge>p+x. p'\<le>p+y \<and> (\<exists>n<length t. fst (t!n) = p') \<and> evals p' t c)"
-  using evals.simps(4) cTrue_evals cEventually_def length_map nth_map nth_mem
+  using evals.simps(4) cTrue_evals cEventually_def length_map nth_map nth_mem recurse_evals_Until_equiv
   by (smt (verit))
 
 lemma cAlways_valid_constraints: "valid_constraints p t (cAlways x y c) = (x\<ge>0 \<and> y\<ge>0)"
@@ -468,7 +468,7 @@ fun robust :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v const
 | "robust p t (cNot c) \<gamma> = - (robust p t c \<gamma>)"
 | "robust p t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust p t c1 \<gamma>) (robust p t c2 \<gamma>)"
 | "robust p t (cUntil x y c1 c2) \<gamma> = recurs_exist_list_Pdep_real (\<lambda>t' z. if (fst z \<ge> p+x \<and> fst z \<le> p+y \<and> evals (fst z) t c2
-      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') then 1 else -1) t t \<gamma>"
+      \<and> recurs_all_list (\<lambda>z'. evals (fst z') t' c1 \<or> fst z' < p \<or> fst z' > (fst z)) t') then 1::real else -1) t t \<gamma>"
 
 lemma robust_sound_0:
   shows "((robust p t c 0 > 0) \<longrightarrow> (evals p t c)) 
@@ -489,7 +489,7 @@ next
 next
   case cUntil
   then show ?case
-    using recurs_exist_list_Pdep_real_sound_0 recurse_evals_Until_equiv robust.simps(4)
+    using recurs_exist_list_Pdep_real_sound_0 evals.simps(4) robust.simps(4)
     by (smt (verit))
 qed    
 
