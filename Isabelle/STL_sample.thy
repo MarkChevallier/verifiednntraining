@@ -278,6 +278,56 @@ next
     by force
 qed
 
+lemma recurs_release_real_const_bel0: 
+  assumes "\<And>z. \<forall>x\<le>0. P z x = P z 0" "\<And>z. \<forall>x\<le>0. P' z x = P' z 0"
+  shows "\<forall>\<gamma>\<le>0. recurs_release_real P P' t \<gamma> = recurs_release_real P P' t 0"
+proof (induct t)
+  case Nil
+  then show ?case 
+    by simp
+next
+  case (Cons x xs)
+  then show ?case
+    using assms Max_gamma_const_bel0 Min_gamma_const_bel0 Max_gamma_comp_eq Min_gamma_comp_eq
+      recurs_release_real.simps(2)
+    by (smt (verit, ccfv_threshold))
+qed    
+
+lemma recurs_release_real_cont:
+  assumes "\<And>z. isCont (P z) 0" "\<And>z. isCont (P' z) 0" 
+    "\<And>z. \<forall>x\<le>0. P z x = P z 0" "\<And>z. \<forall>x\<le>0. P' z x = P' z 0"
+  shows "isCont (\<lambda>\<gamma>. recurs_release_real P P' t \<gamma>) 0"
+proof (induct t)
+  case Nil
+  then show ?case 
+    using recurs_release_real.simps(1) 
+    by simp
+next
+  case (Cons x xs)
+  have 1:"(\<forall>\<gamma>\<le>0. recurs_release_real P P' xs \<gamma> = recurs_release_real P P' xs 0)" "isCont (P' x) 0"
+    "(\<forall>\<gamma>\<le>0. P' x \<gamma> = P' x 0)" "isCont (P x) 0" "(\<forall>\<gamma>\<le>0. P x \<gamma> = P x 0)"
+    using assms recurs_release_real_const_bel0
+    by blast+
+  then have 2:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>)) 0"
+    using Cons Min_gamma_chain_cont_0 Min_gamma_comp_eq
+    by presburger
+  then have 3:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>)) 0"
+    using 1 Min_gamma_chain_cont_0 Min_gamma_comp_eq
+    by presburger
+  then have "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>) = Min_gamma_comp 0 (P x 0) (P' x 0)"
+      "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>) = Min_gamma_comp 0 (P' x 0) (recurs_release_real P P' xs 0)"
+    using Min_gamma_const_bel0 1 Min_gamma_comp_eq
+    by presburger+
+  then have "isCont (\<lambda>\<gamma>. Max_gamma \<gamma> (Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>)) 
+    (Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>))) 0"
+    using 1 2 3 Max_gamma_chain_cont_0 [where ?g="\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>)"
+        and ?f="\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>)"]
+    by blast
+  then show ?case
+    using Max_gamma_comp_eq
+    by simp
+qed
+
 lemma recurs_exist_list_Pdep_real_sound_0:
   assumes "\<And>t x. P t x > 0 \<longrightarrow> P' t x" "\<And>t x. P t x < 0 \<longrightarrow> \<not>(P' t x)"
   shows "(recurs_exist_list_Pdep_real P xs t 0 > 0) \<longrightarrow> (recurs_exist_list_Pdep P' xs t)"
