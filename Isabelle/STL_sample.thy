@@ -293,7 +293,7 @@ next
     by (smt (verit, ccfv_threshold))
 qed    
 
-lemma recurs_release_real_cont:
+lemma recurs_release_real_cont_0:
   assumes "\<And>z. isCont (P z) 0" "\<And>z. isCont (P' z) 0" 
     "\<And>z. \<forall>x\<le>0. P z x = P z 0" "\<And>z. \<forall>x\<le>0. P' z x = P' z 0"
   shows "isCont (\<lambda>\<gamma>. recurs_release_real P P' t \<gamma>) 0"
@@ -721,6 +721,98 @@ next
         by blast+
     qed
   qed
+qed
+
+lemma robust_const_bel0:
+  shows "\<And>p. \<forall>\<gamma>\<le>0. robust p t c \<gamma> = robust p t c 0"
+proof (induct c)
+  case (cMu f r)
+  then show ?case
+    by simp
+next
+  case (cNot c)
+  then show ?case 
+    using robust.simps(2) 
+    by metis
+next
+  case (cAnd c1 c2)
+  then show ?case
+    using Min_gamma_const_bel0 Min_gamma_comp_eq robust.simps(3)
+    by metis
+next
+  case (cUntil x y c1 c2)
+  then have "\<And>z. \<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)) 
+        = Min_gamma_comp 0 (fst z - (p + x)) (Min_gamma_comp 0 (p + y - fst z) (robust (fst z) t c2 0))"
+      "\<And>z. \<forall>\<gamma>\<le>0. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)
+        = Max_gamma_comp 0 (robust (fst z) t c1 0) (p - fst z)"
+    using Min_gamma_const_bel0 Min_gamma_comp_eq Max_gamma_const_bel0 Max_gamma_comp_eq
+    by metis+
+  then show ?case
+    using robust.simps(4) recurs_release_real_const_bel0 [where ?t="t"
+      and ?P="\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>))"
+      and ?P'="\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)"]
+    by auto
+qed
+
+lemma robust_cont_0:
+  shows "\<And>p. isCont (robust p t c) 0" 
+proof (induct c)
+  case (cMu f r)
+  then show ?case 
+    by simp
+next
+  case (cNot c)
+  then show ?case
+    by simp
+next
+  case (cAnd c1 c2)
+  then have "\<forall>\<gamma>\<le>0. robust p t c1 \<gamma> = robust p t c1 0"
+    "\<forall>x\<le>0. robust p t c2 x = robust p t c2 0"
+    using robust_const_bel0 
+    by force+
+  then show ?case
+    using cAnd Min_gamma_chain_cont_0 [where ?f="robust p t c1" and ?g="robust p t c2"] Min_gamma_comp_eq 
+    by fastforce
+next
+  case (cUntil x y c1 c2)
+  {fix p :: real
+    let ?P="\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>))"
+    let ?P'="\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)"
+    {fix z :: "(real\<times>'v)"
+      have 1:"\<forall>\<gamma>\<le>0. robust (fst z) t c1 \<gamma> = robust (fst z) t c1 0"
+          "\<forall>\<gamma>\<le>0. robust (fst z) t c2 \<gamma> = robust (fst z) t c2 0"
+        using robust_const_bel0 recurs_release_real.simps robust.simps(4)
+        by blast+
+      then have 3:"isCont (?P' z) 0"
+        using cUntil Max_gamma_chain_cont_0 [where ?f="robust (fst z) t c1" and ?g="\<lambda>\<gamma>. p - fst z"]
+          Max_gamma_comp_eq 
+        by fastforce
+      then have 4:"\<forall>\<gamma>\<le>0. ?P' z \<gamma> = ?P' z 0"
+        using Max_gamma_const_bel0 Max_gamma_comp_eq 1
+        by presburger
+      then have 5:"\<forall>\<gamma>\<le>0. ?P z \<gamma> = ?P z 0"
+        using 1 Min_gamma_const_bel0 Min_gamma_comp_eq
+        by presburger
+      have 2:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)) 0"
+        using 1 cUntil Min_gamma_chain_cont_0 [where ?g="robust (fst z) t c2" and ?f="\<lambda>\<gamma>. p + y - fst z"]
+          Min_gamma_comp_eq
+        by fastforce
+      have "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>) = Min_gamma_comp 0 (p + y - fst z) (robust (fst z) t c2 0)"
+        using 1 Min_gamma_const_bel0 Min_gamma_comp_eq
+        by presburger
+      then have "isCont (?P z) 0" "isCont (?P' z) 0" "\<forall>\<gamma>\<le>0. ?P' z \<gamma> = ?P' z 0"
+        using 2 cUntil Min_gamma_chain_cont_0 [where ?f="\<lambda>\<gamma>. fst z-(p+x)" and ?g="\<lambda>\<gamma>. Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)"]
+          Min_gamma_comp_eq 3 4
+        by fastforce+
+      then have "isCont (?P z) 0" "isCont (?P' z) 0" "\<forall>\<gamma>\<le>0. ?P' z \<gamma> = ?P' z 0" "\<forall>\<gamma>\<le>0. ?P z \<gamma> = ?P z 0"
+        using 5
+        by blast+}
+    then have "isCont (recurs_release_real ?P ?P' t) 0"
+      using recurs_release_real_cont_0 [where ?P="?P" and ?P'="?P'" and ?t="t"]
+      by blast}
+  then show ?case
+    using robust.simps(4)
+    by auto
 qed
 
 export_code evals robust
