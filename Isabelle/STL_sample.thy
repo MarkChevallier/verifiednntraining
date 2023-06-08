@@ -815,6 +815,13 @@ next
     by auto
 qed
 
+lemma robust_sound:
+  assumes "robust p t c \<midarrow>0\<rightarrow> x"
+  shows "x>0 \<longrightarrow> evals p t c"
+    "x<0 \<longrightarrow> \<not>evals p t c"
+  using robust_cont_0 robust_sound_0 LIM_unique assms continuous_within
+  by metis+
+
 export_code evals robust
  in OCaml
   module_name STLLoss
