@@ -250,78 +250,136 @@ fun recurs_release :: "('a \<Rightarrow> bool) \<Rightarrow> ('a \<Rightarrow> b
   "recurs_release P P' [] = False"
 | "recurs_release P P' (x#xs) = ((P x \<and> P' x) \<or> ((P' x) \<and> recurs_release P P' xs))"
 
-fun recurs_release_real :: "('a \<Rightarrow> real \<Rightarrow> real) \<Rightarrow> ('a \<Rightarrow> real \<Rightarrow> real) \<Rightarrow> 'a list \<Rightarrow> real \<Rightarrow> real" where
-  "recurs_release_real P P' [] \<gamma> = -1"
-| "recurs_release_real P P' (x#xs) \<gamma> = (Max_gamma_comp \<gamma> (Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>))
-      (Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>)))"
+fun recurs_release_real :: "('a \<Rightarrow> real \<Rightarrow> real) \<Rightarrow> ('a \<Rightarrow> real \<Rightarrow> real) \<Rightarrow> 'a list \<Rightarrow> real \<Rightarrow> real \<Rightarrow> real" where
+  "recurs_release_real P P' [] \<gamma> E = -(abs E)"
+| "recurs_release_real P P' (x#xs) \<gamma> E = (Max_gamma_comp \<gamma> (Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>))
+      (Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma> (P x \<gamma>))))"
 
 lemma recurs_release_real_sound_0:
   assumes "\<And>z. Pr z 0 > 0 \<longrightarrow> P z" "\<And>z. Pr z 0 < 0 \<longrightarrow> \<not>(P z)"
       "\<And>z. P'r z 0 > 0 \<longrightarrow> P' z" "\<And>z. P'r z 0 < 0 \<longrightarrow> \<not>(P' z)"
-  shows "(recurs_release_real Pr P'r t 0 > 0 \<longrightarrow> recurs_release P P' t)"
-      "recurs_release_real Pr P'r t 0 < 0 \<longrightarrow> \<not>(recurs_release P P' t)"
-proof (induct t)
+  shows "(recurs_release_real Pr P'r t 0 E > 0 \<longrightarrow> recurs_release P P' t)"
+      "recurs_release_real Pr P'r t 0 E < 0 \<longrightarrow> \<not>(recurs_release P P' t)"
+proof (induct t arbitrary: E)
   case Nil
-  then show "(recurs_release_real Pr P'r [] 0 > 0 \<longrightarrow> recurs_release P P' [])"
-      "recurs_release_real Pr P'r [] 0 < 0 \<longrightarrow> \<not>(recurs_release P P' [])"
+  then show "\<And>E. (recurs_release_real Pr P'r [] 0 E > 0 \<longrightarrow> recurs_release P P' [])"
+      "\<And>E. recurs_release_real Pr P'r [] 0 E < 0 \<longrightarrow> \<not>(recurs_release P P' [])"
     by simp+
 next
   case (Cons x xs)
-  have 1:"recurs_release_real Pr P'r (x#xs) 0 = (max (min (Pr x 0) (P'r x 0)) 
-    (min (P'r x 0) (recurs_release_real Pr P'r xs 0)))"
+  have 1:"\<And>E. recurs_release_real Pr P'r (x#xs) 0 E = (max (min (Pr x 0) (P'r x 0)) 
+    (min (P'r x 0) (recurs_release_real Pr P'r xs 0 (Pr x 0))))"
     by force
-  then show "recurs_release_real Pr P'r (x#xs) 0 > 0 \<longrightarrow> recurs_release P P' (x#xs)"
-    using Cons assms(1,3)
-    by force
-  then show "recurs_release_real Pr P'r (x#xs) 0 < 0 \<longrightarrow> \<not>(recurs_release P P' (x#xs))"
-    using Cons assms(2,4)
-    by force
+  then show "\<And>E. recurs_release_real Pr P'r (x#xs) 0 E > 0 \<longrightarrow> recurs_release P P' (x#xs)"
+    using Cons assms(1,3) recurs_release.simps(2)
+    by (smt (verit))
+  then show "\<And>E. recurs_release_real Pr P'r (x#xs) 0 E < 0 \<longrightarrow> \<not>(recurs_release P P' (x#xs))"
+    using Cons assms(2,4) recurs_release.simps(2) 1
+    by (smt (verit))
 qed
 
 lemma recurs_release_real_const_bel0: 
   assumes "\<And>z. \<forall>x\<le>0. P z x = P z 0" "\<And>z. \<forall>x\<le>0. P' z x = P' z 0"
-  shows "\<forall>\<gamma>\<le>0. recurs_release_real P P' t \<gamma> = recurs_release_real P P' t 0"
+  shows "\<And>z. \<forall>\<gamma>\<le>0. recurs_release_real P P' t \<gamma> (P z \<gamma>) = recurs_release_real P P' t 0 (P z 0)"
 proof (induct t)
   case Nil
   then show ?case 
-    by simp
+    using assms(1) recurs_release_real.simps(1)
+    by metis
 next
   case (Cons x xs)
   then show ?case
     using assms Max_gamma_const_bel0 Min_gamma_const_bel0 Max_gamma_comp_eq Min_gamma_comp_eq
-      recurs_release_real.simps(2)
-    by (smt (verit, ccfv_threshold))
-qed    
+      recurs_release_real.simps(2) recurs_release_real.elims
+    by (smt (verit, ccfv_SIG))
+qed
 
-lemma recurs_release_real_cont_0:
-  assumes "\<And>z. isCont (P z) 0" "\<And>z. isCont (P' z) 0" 
-    "\<And>z. \<forall>x\<le>0. P z x = P z 0" "\<And>z. \<forall>x\<le>0. P' z x = P' z 0"
-  shows "isCont (\<lambda>\<gamma>. recurs_release_real P P' t \<gamma>) 0"
+lemma recurs_release_real_const_bel0_const: 
+  assumes "\<And>z. \<forall>x\<le>0. P z x = P z 0" "\<And>z. \<forall>x\<le>0. P' z x = P' z 0"
+  shows "\<And>z. \<forall>\<gamma>\<le>0. recurs_release_real P P' t \<gamma> E = recurs_release_real P P' t 0 E"
 proof (induct t)
   case Nil
   then show ?case 
-    using recurs_release_real.simps(1) 
-    by simp
+    using assms(1) recurs_release_real.simps(1)
+    by metis
 next
   case (Cons x xs)
-  have 1:"(\<forall>\<gamma>\<le>0. recurs_release_real P P' xs \<gamma> = recurs_release_real P P' xs 0)" "isCont (P' x) 0"
-    "(\<forall>\<gamma>\<le>0. P' x \<gamma> = P' x 0)" "isCont (P x) 0" "(\<forall>\<gamma>\<le>0. P x \<gamma> = P x 0)"
-    using assms recurs_release_real_const_bel0
+  then show ?case
+    using assms Max_gamma_const_bel0 Min_gamma_const_bel0 Max_gamma_comp_eq Min_gamma_comp_eq
+      recurs_release_real.simps(2) recurs_release_real.elims
+    by (smt (verit, ccfv_SIG))
+qed
+
+lemma recurs_release_real_cont_0_var:
+  assumes "\<And>z. isCont (P z) 0" "\<And>z. isCont (P' z) 0"
+    "\<And>z. \<forall>x\<le>0. P z x = P z 0" "\<And>z. \<forall>x\<le>0. P' z x = P' z 0"
+  shows "\<And>x. isCont (\<lambda>\<gamma>. recurs_release_real P P' t \<gamma> (P x \<gamma>)) 0"
+proof (induct t)
+  case Nil
+  then show ?case 
+    using recurs_release_real.simps(1) assms
+    by auto
+next
+  case (Cons y ys)
+  then have 1:"isCont (P' y) 0" "isCont (\<lambda>\<gamma>. recurs_release_real P P' ys \<gamma> (P y \<gamma>)) 0" 
+    "(\<forall>x\<le>0. P' y x = P' y 0)"
+    "isCont (P y) 0" "(\<forall>x\<le>0. P y x = P y 0)"
+    using assms
     by blast+
-  then have 2:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>)) 0"
-    using Cons Min_gamma_chain_cont_0 Min_gamma_comp_eq
+  have 11:"\<forall>x\<le>0. recurs_release_real P P' ys x (P y x) = recurs_release_real P P' ys 0 (P y 0)"
+    using assms recurs_release_real_const_bel0
+    by meson
+  have 2:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P' y \<gamma>) (recurs_release_real P P' ys \<gamma> (P y \<gamma>))) 0"
+    using 1(1-3) 11 Min_gamma_chain_cont_0 Min_gamma_comp_eq
     by presburger
-  then have 3:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>)) 0"
+  then have 3:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P y \<gamma>) (P' y \<gamma>)) 0"
+    using 1(1,3-5) Min_gamma_chain_cont_0 Min_gamma_comp_eq
+    by presburger
+  have "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (P y \<gamma>) (P' y \<gamma>) = Min_gamma_comp 0 (P y 0) (P' y 0)"
+      "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (P' y \<gamma>) (recurs_release_real P P' ys \<gamma> (P y \<gamma>)) = Min_gamma_comp 0 (P' y 0) (recurs_release_real P P' ys 0 (P y 0))"
+    using Min_gamma_const_bel0 1(3,5) Min_gamma_comp_eq 11
+    by presburger+
+  then have "isCont (\<lambda>\<gamma>. Max_gamma \<gamma> (Min_gamma_comp \<gamma> (P y \<gamma>) (P' y \<gamma>)) 
+    (Min_gamma_comp \<gamma> (P' y \<gamma>) (recurs_release_real P P' ys \<gamma> (P y \<gamma>)))) 0"
+    using 1 2 3 Max_gamma_chain_cont_0
+    by blast
+  then show ?case
+    using Max_gamma_comp_eq
+    by simp
+qed
+
+lemma recurs_release_real_cont_0:
+  assumes "\<And>z. isCont (P z) 0" "\<And>z. isCont (P' z) 0"
+    "\<And>z. \<forall>x\<le>0. P z x = P z 0" "\<And>z. \<forall>x\<le>0. P' z x = P' z 0"
+  shows "\<And>x. isCont (\<lambda>\<gamma>. recurs_release_real P P' t \<gamma> E) 0"
+proof (induct t)
+  case Nil then show ?case by simp
+next
+  case (Cons y ys)
+  then have 1:"isCont (P' y) 0" 
+    "(\<forall>x\<le>0. P' y x = P' y 0)"
+    "isCont (P y) 0" "(\<forall>x\<le>0. P y x = P y 0)"
+    using assms
+    by blast+
+  then have 12:"isCont (\<lambda>\<gamma>. recurs_release_real P P' ys \<gamma> (P y \<gamma>)) 0"
+    using recurs_release_real_cont_0_var assms
+    by (metis (mono_tags))
+  have 11:"\<forall>x\<le>0. recurs_release_real P P' ys x (P y x) = recurs_release_real P P' ys 0 (P y 0)"
+    using assms recurs_release_real_const_bel0
+    by meson
+  have 2:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P' y \<gamma>) (recurs_release_real P P' ys \<gamma> (P y \<gamma>))) 0"
+    using 1(1-2) 11 12 Min_gamma_chain_cont_0 Min_gamma_comp_eq
+    by presburger
+  then have 3:"isCont (\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P y \<gamma>) (P' y \<gamma>)) 0"
     using 1 Min_gamma_chain_cont_0 Min_gamma_comp_eq
     by presburger
-  then have "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>) = Min_gamma_comp 0 (P x 0) (P' x 0)"
-      "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>) = Min_gamma_comp 0 (P' x 0) (recurs_release_real P P' xs 0)"
-    using Min_gamma_const_bel0 1 Min_gamma_comp_eq
+  have "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (P y \<gamma>) (P' y \<gamma>) = Min_gamma_comp 0 (P y 0) (P' y 0)"
+      "\<forall>\<gamma>\<le>0. Min_gamma_comp \<gamma> (P' y \<gamma>) (recurs_release_real P P' ys \<gamma> (P y \<gamma>)) = Min_gamma_comp 0 (P' y 0) (recurs_release_real P P' ys 0 (P y 0))"
+    using Min_gamma_const_bel0 1 Min_gamma_comp_eq 11
     by presburger+
-  then have "isCont (\<lambda>\<gamma>. Max_gamma \<gamma> (Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>)) 
-    (Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>))) 0"
-    using 1 2 3 Max_gamma_chain_cont_0 [where ?g="\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P' x \<gamma>) (recurs_release_real P P' xs \<gamma>)"
-        and ?f="\<lambda>\<gamma>. Min_gamma_comp \<gamma> (P x \<gamma>) (P' x \<gamma>)"]
+  then have "isCont (\<lambda>\<gamma>. Max_gamma \<gamma> (Min_gamma_comp \<gamma> (P y \<gamma>) (P' y \<gamma>)) 
+    (Min_gamma_comp \<gamma> (P' y \<gamma>) (recurs_release_real P P' ys \<gamma> (P y \<gamma>)))) 0"
+    using 1 2 3 Max_gamma_chain_cont_0
     by blast
   then show ?case
     using Max_gamma_comp_eq
@@ -585,7 +643,7 @@ fun robust :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v const
 | "robust p t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust p t c1 \<gamma>) (robust p t c2 \<gamma>)"
 | "robust p t (cUntil x y c1 c2) \<gamma> = recurs_release_real 
     (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p+x)) (Min_gamma_comp \<gamma> ((p+y) - fst z) (robust (fst z) t c2 \<gamma>))) 
-    (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p-fst z)) t \<gamma>"
+    (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p-fst z)) t \<gamma> (-1)"
 
 lemma robust_sound_0:
   shows "\<And>p. (robust p t c 0 > 0) \<longrightarrow> (evals p t c)" 
@@ -679,12 +737,12 @@ next
     qed
     then show "(\<And>p. 0 < recurs_release_real
                (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
-               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 \<longrightarrow>
+               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 (-1) \<longrightarrow>
           recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2) (\<lambda>z. evals (fst z) t c1 \<or> fst z < p)
            t)" 
        "(\<And>p. recurs_release_real
            (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
-           (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0
+           (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 (-1)
           < 0 \<longrightarrow>
           \<not> recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2)
               (\<lambda>z. evals (fst z) t c1 \<or> fst z < p) t)"
@@ -692,12 +750,12 @@ next
       {fix p :: real
         have "0 < recurs_release_real
                (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
-               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 \<longrightarrow>
+               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 (-1) \<longrightarrow>
           recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2) (\<lambda>z. evals (fst z) t c1 \<or> fst z < p)
            t"
           "recurs_release_real
            (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
-           (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0
+           (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 (-1)
           < 0 \<longrightarrow>
           \<not> recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2)
               (\<lambda>z. evals (fst z) t c1 \<or> fst z < p) t"
@@ -709,12 +767,12 @@ next
           by blast+}
       then show "(\<And>p. 0 < recurs_release_real
                    (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
-                   (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 \<longrightarrow>
+                   (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 (-1) \<longrightarrow>
               recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2) (\<lambda>z. evals (fst z) t c1 \<or> fst z < p)
                t)" 
            "(\<And>p. recurs_release_real
                (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>)))
-               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0
+               (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)) t 0 (-1)
               < 0 \<longrightarrow>
               \<not> recurs_release (\<lambda>z. p + x \<le> fst z \<and> fst z \<le> p + y \<and> evals (fst z) t c2)
                   (\<lambda>z. evals (fst z) t c1 \<or> fst z < p) t)"
@@ -748,9 +806,9 @@ next
     using Min_gamma_const_bel0 Min_gamma_comp_eq Max_gamma_const_bel0 Max_gamma_comp_eq
     by metis+
   then show ?case
-    using robust.simps(4) recurs_release_real_const_bel0 [where ?t="t"
+    using robust.simps(4) recurs_release_real_const_bel0_const [where ?t="t"
       and ?P="\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p + x)) (Min_gamma_comp \<gamma> (p + y - fst z) (robust (fst z) t c2 \<gamma>))"
-      and ?P'="\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)"]
+      and ?P'="\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p - fst z)" and ?E="-1"]
     by auto
 qed
 
@@ -807,7 +865,7 @@ next
       then have "isCont (?P z) 0" "isCont (?P' z) 0" "\<forall>\<gamma>\<le>0. ?P' z \<gamma> = ?P' z 0" "\<forall>\<gamma>\<le>0. ?P z \<gamma> = ?P z 0"
         using 5
         by blast+}
-    then have "isCont (recurs_release_real ?P ?P' t) 0"
+    then have "isCont (\<lambda>\<gamma>. recurs_release_real ?P ?P' t \<gamma> (-1)) 0"
       using recurs_release_real_cont_0 [where ?P="?P" and ?P'="?P'" and ?t="t"]
       by blast}
   then show ?case
@@ -820,7 +878,7 @@ lemma robust_sound:
   shows "x>0 \<longrightarrow> evals p t c"
     "x<0 \<longrightarrow> \<not>evals p t c"
   using robust_cont_0 robust_sound_0 LIM_unique assms continuous_within
-  by metis+
+  by blast+
 
 export_code evals robust
  in OCaml
