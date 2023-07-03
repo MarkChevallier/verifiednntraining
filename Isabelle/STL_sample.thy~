@@ -557,6 +557,15 @@ lemma cOr_evals:"evals p t (cOr c1 c2) = (evals p t c1 \<or> evals p t c2)"
   using cOr_def evals.simps(2,3)
   by metis
 
+lemma cImplies_valid_constraints:
+  "valid_constraints p t (cImplies c1 c2) = (valid_constraints p t c1 \<and> valid_constraints p t c2)"
+  using cImplies_def cOr_def valid_constraints.simps(2,3)
+  by metis
+
+lemma cImplies_evals:"evals p t (cImplies c1 c2) = (evals p t c1 \<longrightarrow> evals p t c2)"
+  using cOr_evals cImplies_def evals.simps(2)
+  by metis
+
 lemma cEventually_valid_constraints:
   "valid_constraints p t (cEventually x y c) = (x\<ge>0 \<and> y\<ge>0)"
   using cEventually_def valid_constraints.simps(4)

@@ -889,6 +889,19 @@ lemma robust_sound:
   using robust_cont_0 robust_sound_0 LIM_unique assms continuous_within
   by blast+
 
+definition evalsb :: "real \<Rightarrow> ((real\<times>'v) list) list \<Rightarrow> 'v constraint \<Rightarrow> bool list" where
+"evalsb p T c = map (\<lambda>t. evals p t c) T"
+
+definition robustb :: "real \<Rightarrow> ((real\<times>'v) list) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real list" where
+"robustb p T c \<gamma> = map (\<lambda>t. robust p t c \<gamma>) T"
+
+lemma robustb_sound:
+  assumes "\<forall>n<length T. (\<lambda>\<gamma>. (robustb p T c \<gamma>)!n) \<midarrow>0\<rightarrow> X!n" "length X = length T"
+  shows "\<forall>n<length T. (X!n) > 0 \<longrightarrow> (evalsb p T c)!n"
+    "\<forall>n<length T. (X!n) < 0 \<longrightarrow> \<not>((evalsb p T c)!n)"
+  using robust_sound robustb_def evalsb_def assms LIM_cong nth_map
+  by (metis (no_types, lifting))+
+
 export_code evals robust
  in OCaml
   module_name STLLoss
