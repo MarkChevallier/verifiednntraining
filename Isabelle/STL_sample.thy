@@ -896,11 +896,23 @@ definition robustb :: "real \<Rightarrow> ((real\<times>'v) list) list \<Rightar
 "robustb p T c \<gamma> = map (\<lambda>t. robust p t c \<gamma>) T"
 
 lemma robustb_sound:
-  assumes "\<forall>n<length T. (\<lambda>\<gamma>. (robustb p T c \<gamma>)!n) \<midarrow>0\<rightarrow> X!n" "length X = length T"
+  assumes "\<forall>n<length T. (\<lambda>\<gamma>. (robustb p T c \<gamma>)!n) \<midarrow>0\<rightarrow> X!n"
   shows "\<forall>n<length T. (X!n) > 0 \<longrightarrow> (evalsb p T c)!n"
     "\<forall>n<length T. (X!n) < 0 \<longrightarrow> \<not>((evalsb p T c)!n)"
-  using robust_sound robustb_def evalsb_def assms LIM_cong nth_map
-  by (metis (no_types, lifting))+
+proof -
+  {fix n :: nat
+    assume "n<length T"
+    then have "(\<lambda>\<gamma>. (robustb p T c \<gamma>)!n) \<midarrow>0\<rightarrow> robust p (T!n) c 0"
+      using robustb_def robust_cont_0
+      by (smt (verit) LIM_cong continuous_at nth_map)}
+  then have "\<forall>n<length T. X!n = robust p (T!n) c 0"
+    using assms LIM_unique
+    by blast
+  then show "\<forall>n<length T. (X!n) > 0 \<longrightarrow> (evalsb p T c)!n"
+    "\<forall>n<length T. (X!n) < 0 \<longrightarrow> \<not>((evalsb p T c)!n)"
+  using robust_sound_0 robustb_def evalsb_def LIM_cong nth_map
+  by metis+
+qed
 
 export_code evals robust
  in OCaml
