@@ -169,6 +169,21 @@ lemma cOr_eval:"eval t l (cOr c1 c2) = (eval t l c1 \<or> eval t l c2)"
   using cOr_def eval.simps(2,3) 
   by metis
 
+definition cImplies :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+"cImplies c1 c2 = cOr (cNot c1) c2"
+
+lemma cImplies_vc:"valid_constraint l (cImplies c1 c2) = (valid_constraint l c1 \<and> valid_constraint l c2)"
+  using valid_constraint.simps(2,3) cImplies_def cOr_def
+  by metis
+
+lemma cImplies_evalvc:"evalvc t l (cImplies c1 c2) = (valid_constraint l (cImplies c1 c2) \<and> (evalvc t l c1 \<longrightarrow> evalvc t l c2))"
+  using valid_constraint.simps(2,3) cOr_def evalvc.simps(2,3) cImplies_def
+  by metis
+
+lemma cImplies_eval:"eval t l (cImplies c1 c2) = (eval t l c1 \<longrightarrow> eval t l c2)"
+  using cImplies_def eval.simps(2) cOr_eval
+  by metis
+
 definition cEventually :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
 "cEventually x y c = cUntil x y cTrue c"
 
