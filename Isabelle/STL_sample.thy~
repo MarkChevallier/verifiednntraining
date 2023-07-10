@@ -430,8 +430,9 @@ definition next_time :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow
 "next_time p xs = Min (set (filter (\<lambda>x. x>p) (map fst xs)))"
 *)
 
-definition find_time :: "(real \<times> 'v) list \<Rightarrow> real \<Rightarrow> 'v" where
-"find_time xs r = (snd (the (find (\<lambda>x. fst x = r) xs)))"
+fun find_time :: "(real \<times> 'v) list \<Rightarrow> real \<Rightarrow> 'v" where
+"find_time [] r = undefined"
+| "find_time (x#xs) r = (if fst x = r then snd x else find_time xs r)"
 
 (*
 lemma signal_induct: 
@@ -913,6 +914,25 @@ proof -
   using robust_sound_0 robustb_def evalsb_def LIM_cong nth_map
   by metis+
 qed
+
+fun Feval :: "cterm \<Rightarrow> real list \<Rightarrow> real" where
+"Feval (Get n) xs = xs!(nat n)"
+| "Feval (Add c1 c2) xs = Feval c1 xs + Feval c2 xs"
+| "Feval (Mult c1 c2) xs = Feval c1 xs * Feval c2 xs"
+| "Feval (Uminus c) xs = -1 * (Feval c xs)"
+| "Feval (Divide c1 c2) xs = Feval c1 xs / Feval c2 xs"
+
+lemma robust_sound_real_list:
+  fixes t :: "(real \<times> real list) list" and c :: "(real list) constraint"
+  assumes "robust p t c \<midarrow>0\<rightarrow> x"
+  shows "x>0 \<longrightarrow> evals p t c"
+    "x<0 \<longrightarrow> \<not>evals p t c"
+  using robust_sound assms
+  by blast+
+
+lemma "evals 0 ([(0,[1,2,3]),(1,[5,6,7])]::(real\<times>real list) list) (cMu (Feval (Get 1)) 0)"
+  using evals.simps(1) find_time.simps(2) Feval.simps(1)
+  by auto
 
 export_code evals robust
  in OCaml

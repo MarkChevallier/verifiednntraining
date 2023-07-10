@@ -904,8 +904,8 @@ proof -
   {fix n :: nat
     assume "n<length T"
     then have "(\<lambda>\<gamma>. (robustb p T c \<gamma>)!n) \<midarrow>0\<rightarrow> robust p (T!n) c 0"
-      using robustb_def robust_cont_0
-      by (smt (verit) LIM_cong continuous_at nth_map)}
+      using robustb_def robust_cont_0 LIM_cong continuous_at nth_map
+      by (smt (verit))}
   then have "\<forall>n<length T. X!n = robust p (T!n) c 0"
     using assms LIM_unique
     by blast
@@ -922,19 +922,42 @@ fun Feval :: "cterm \<Rightarrow> real list \<Rightarrow> real" where
 | "Feval (Uminus c) xs = -1 * (Feval c xs)"
 | "Feval (Divide c1 c2) xs = Feval c1 xs / Feval c2 xs"
 
-lemma robust_sound_real_list:
-  fixes t :: "(real \<times> real list) list" and c :: "(real list) constraint"
-  assumes "robust p t c \<midarrow>0\<rightarrow> x"
-  shows "x>0 \<longrightarrow> evals p t c"
-    "x<0 \<longrightarrow> \<not>evals p t c"
-  using robust_sound assms
-  by blast+
+fun constraintright :: "real list constraint \<Rightarrow> bool" where
+"constraintright (cMu f r) = (\<exists>c. f = Feval c)"
+| "constraintright (cNot c) = constraintright c"
+| "constraintright (cAnd c1 c2) = (constraintright c1 \<and> constraintright c2)"
+| "constraintright (cUntil x y c1 c2) = (constraintright c1 \<and> constraintright c2)"
 
-lemma "evals 0 ([(0,[1,2,3]),(1,[5,6,7])]::(real\<times>real list) list) (cMu (Feval (Get 1)) 0)"
-  using evals.simps(1) find_time.simps(2) Feval.simps(1)
-  by auto
+typedef rconstraint = "{c. constraintright c}"
+  morphisms to_constraint to_rconstraint 
+  using constraintright.simps(1) 
+  by blast
 
-export_code evals robust
+setup_lifting type_definition_rconstraint
+
+lift_definition revals :: "real \<Rightarrow> (real\<times>real list) list \<Rightarrow> rconstraint \<Rightarrow> bool" is evals .
+
+lift_definition rrobust :: "real \<Rightarrow> (real \<times>real list) list \<Rightarrow> rconstraint \<Rightarrow> real \<Rightarrow> real" is robust .
+
+lemma rrobust_sound:
+  fixes p :: real and t :: "(real\<times>real list) list" and c :: rconstraint and x :: real
+  assumes "rrobust p t c \<midarrow>0\<rightarrow> x"
+  shows "x>0 \<longrightarrow> revals p t c"
+    "x<0 \<longrightarrow> \<not>revals p t c"
+proof -
+  have "robust p t (to_constraint c) \<midarrow>0\<rightarrow> x"
+    using assms
+    by (simp add: rrobust.rep_eq)
+  then have "x>0 \<longrightarrow> evals p t (to_constraint c)"
+    "x<0 \<longrightarrow> \<not>evals p t (to_constraint c)"
+    using robust_sound
+    by blast+
+  then show "x>0 \<longrightarrow> revals p t c"
+    "x<0 \<longrightarrow> \<not>revals p t c"
+    by (simp add: revals.rep_eq)+
+qed
+
+export_code revals rrobust
  in OCaml
   module_name STLLoss
 
