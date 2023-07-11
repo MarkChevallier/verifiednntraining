@@ -411,7 +411,7 @@ fun recurs_all_list_real :: "('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rig
 | "recurs_all_list_real P (x#xs) \<gamma> = Min_gamma_comp \<gamma> (if P x then 1 else -1) (recurs_all_list_real P xs \<gamma>)"
 
 fun valid_constraints :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"valid_constraints p t (cMu f r) = (p\<in>set (map fst t))"
+"valid_constraints p t (cMu f ct r) = (p\<in>set (map fst t))"
 | "valid_constraints p t (cNot c) = (valid_constraints p t c)"
 | "valid_constraints p t (cAnd c1 c2) = (valid_constraints p t c1 \<and> valid_constraints p t c2)"
 | "valid_constraints p t (cUntil x y c1 c2) = (x \<ge> 0 \<and> y \<ge> 0)"
@@ -453,7 +453,7 @@ next
 *)    
 
 fun evals :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"evals p t (cMu f r) = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then (f (find_time t p) > r) else False)"
+"evals p t (cMu f ct r) = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then (f ct (find_time t p) > r) else False)"
 | "evals p t (cNot c) = (\<not>(evals p t c))"
 | "evals p t (cAnd c1 c2) = ((evals p t c1) \<and> (evals p t c2))"
 | "evals p t (cUntil x y c1 c2) 
@@ -648,7 +648,7 @@ proof -
 *)
 
 fun robust :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
-"robust p t (cMu f r) \<gamma> = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then f (find_time t p) - r else -1)"
+"robust p t (cMu f ct r) \<gamma> = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then f ct (find_time t p) - r else -1)"
 | "robust p t (cNot c) \<gamma> = - (robust p t c \<gamma>)"
 | "robust p t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust p t c1 \<gamma>) (robust p t c2 \<gamma>)"
 | "robust p t (cUntil x y c1 c2) \<gamma> = recurs_release_real 
@@ -659,9 +659,9 @@ lemma robust_sound_0:
   shows "\<And>p. (robust p t c 0 > 0) \<longrightarrow> (evals p t c)" 
        "\<And>p. (robust p t c 0 < 0) \<longrightarrow> \<not>(evals p t c)"
 proof (induct c)
-  case (cMu f r)
-  then show "\<And>p. (robust p t (cMu f r) 0 > 0) \<longrightarrow> (evals p t (cMu f r))" 
-       "\<And>p. (robust p t (cMu f r) 0 < 0) \<longrightarrow> \<not>(evals p t (cMu f r))"
+  case (cMu f ct r)
+  then show "\<And>p. (robust p t (cMu f ct r) 0 > 0) \<longrightarrow> (evals p t (cMu f ct r))" 
+       "\<And>p. (robust p t (cMu f ct r) 0 < 0) \<longrightarrow> \<not>(evals p t (cMu f ct r))"
     using recurs_exist_list_equiv
     by auto+
 next
@@ -904,8 +904,8 @@ proof -
   {fix n :: nat
     assume "n<length T"
     then have "(\<lambda>\<gamma>. (robustb p T c \<gamma>)!n) \<midarrow>0\<rightarrow> robust p (T!n) c 0"
-      using robustb_def robust_cont_0
-      by (smt (verit) LIM_cong continuous_at nth_map)}
+      using robustb_def robust_cont_0 LIM_cong continuous_at nth_map
+      by (smt (verit))}
   then have "\<forall>n<length T. X!n = robust p (T!n) c 0"
     using assms LIM_unique
     by blast
@@ -915,26 +915,56 @@ proof -
   by metis+
 qed
 
+fun nthint :: "'a list \<Rightarrow> int \<Rightarrow> 'a" where
+"nthint [] n = undefined"
+| "nthint (x # xs) n = (if eqint n 0 then x else nthint xs ((absint n)-1))"
+
 fun Feval :: "cterm \<Rightarrow> real list \<Rightarrow> real" where
-"Feval (Get n) xs = xs!(nat n)"
+"Feval (Get n) xs = nthint xs n"
 | "Feval (Add c1 c2) xs = Feval c1 xs + Feval c2 xs"
 | "Feval (Mult c1 c2) xs = Feval c1 xs * Feval c2 xs"
 | "Feval (Uminus c) xs = -1 * (Feval c xs)"
 | "Feval (Divide c1 c2) xs = Feval c1 xs / Feval c2 xs"
 
-lemma robust_sound_real_list:
-  fixes t :: "(real \<times> real list) list" and c :: "(real list) constraint"
-  assumes "robust p t c \<midarrow>0\<rightarrow> x"
-  shows "x>0 \<longrightarrow> evals p t c"
-    "x<0 \<longrightarrow> \<not>evals p t c"
-  using robust_sound assms
-  by blast+
+fun constraintright :: "real list constraint \<Rightarrow> bool" where
+"constraintright (cMu f ct r) = (f = Feval)"
+| "constraintright (cNot c) = constraintright c"
+| "constraintright (cAnd c1 c2) = (constraintright c1 \<and> constraintright c2)"
+| "constraintright (cUntil x y c1 c2) = (constraintright c1 \<and> constraintright c2)"
 
-lemma "evals 0 ([(0,[1,2,3]),(1,[5,6,7])]::(real\<times>real list) list) (cMu (Feval (Get 1)) 0)"
-  using evals.simps(1) find_time.simps(2) Feval.simps(1)
-  by auto
+typedef rconstraint = "{c. constraintright c}"
+  morphisms to_constraint to_rconstraint 
+  using constraintright.simps(1) 
+  by blast
 
-export_code evals robust
+declare to_constraint_inverse [simp]
+  to_rconstraint_inverse [simp]
+
+setup_lifting type_definition_rconstraint
+
+lift_definition revals :: "real \<Rightarrow> (real\<times>real list) list \<Rightarrow> rconstraint \<Rightarrow> bool" is evals .
+
+lift_definition rrobust :: "real \<Rightarrow> (real \<times>real list) list \<Rightarrow> rconstraint \<Rightarrow> real \<Rightarrow> real" is robust .
+
+lemma rrobust_sound:
+  fixes p :: real and t :: "(real\<times>real list) list" and c :: rconstraint and x :: real
+  assumes "rrobust p t c \<midarrow>0\<rightarrow> x"
+  shows "x>0 \<longrightarrow> revals p t c"
+    "x<0 \<longrightarrow> \<not>revals p t c"
+proof -
+  have "robust p t (to_constraint c) \<midarrow>0\<rightarrow> x"
+    using assms
+    by (simp add: rrobust.rep_eq)
+  then have "x>0 \<longrightarrow> evals p t (to_constraint c)"
+    "x<0 \<longrightarrow> \<not>evals p t (to_constraint c)"
+    using robust_sound
+    by blast+
+  then show "x>0 \<longrightarrow> revals p t c"
+    "x<0 \<longrightarrow> \<not>revals p t c"
+    by (simp add: revals.rep_eq)+
+qed
+
+export_code evals robust Feval
  in OCaml
   module_name STLLoss
 

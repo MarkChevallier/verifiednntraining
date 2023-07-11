@@ -92,10 +92,18 @@ code_printing
 fun eqint :: "int \<Rightarrow> int \<Rightarrow> bool" where
 "eqint a b = (a=b)"
 
+fun absint :: "int \<Rightarrow> int" where
+"absint a = abs a"
+
 code_printing
   constant "eqint :: int \<Rightarrow> int \<Rightarrow> bool" \<rightharpoonup>
     (SML) "Int.= ((_), (_))"
     and (OCaml) "(=)"
+
+code_printing
+  constant "absint :: int \<Rightarrow> int" \<rightharpoonup>
+    (SML) "Int.abs"
+    and (OCaml) "(abs)"
 
 code_printing
   constant "uminus :: real \<Rightarrow> real" \<rightharpoonup>

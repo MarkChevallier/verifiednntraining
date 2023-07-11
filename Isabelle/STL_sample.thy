@@ -411,7 +411,7 @@ fun recurs_all_list_real :: "('a \<Rightarrow> bool) \<Rightarrow> 'a list \<Rig
 | "recurs_all_list_real P (x#xs) \<gamma> = Min_gamma_comp \<gamma> (if P x then 1 else -1) (recurs_all_list_real P xs \<gamma>)"
 
 fun valid_constraints :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"valid_constraints p t (cMu f r) = (p\<in>set (map fst t))"
+"valid_constraints p t (cMu f ct r) = (p\<in>set (map fst t))"
 | "valid_constraints p t (cNot c) = (valid_constraints p t c)"
 | "valid_constraints p t (cAnd c1 c2) = (valid_constraints p t c1 \<and> valid_constraints p t c2)"
 | "valid_constraints p t (cUntil x y c1 c2) = (x \<ge> 0 \<and> y \<ge> 0)"
@@ -453,7 +453,7 @@ next
 *)    
 
 fun evals :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"evals p t (cMu f r) = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then (f (find_time t p) > r) else False)"
+"evals p t (cMu f ct r) = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then (f ct (find_time t p) > r) else False)"
 | "evals p t (cNot c) = (\<not>(evals p t c))"
 | "evals p t (cAnd c1 c2) = ((evals p t c1) \<and> (evals p t c2))"
 | "evals p t (cUntil x y c1 c2) 
@@ -648,7 +648,7 @@ proof -
 *)
 
 fun robust :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v constraint \<Rightarrow> real \<Rightarrow> real" where
-"robust p t (cMu f r) \<gamma> = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then f (find_time t p) - r else -1)"
+"robust p t (cMu f ct r) \<gamma> = (if (recurs_exist_list (\<lambda>z. fst z = p) t) then f ct (find_time t p) - r else -1)"
 | "robust p t (cNot c) \<gamma> = - (robust p t c \<gamma>)"
 | "robust p t (cAnd c1 c2) \<gamma> = Min_gamma_comp \<gamma> (robust p t c1 \<gamma>) (robust p t c2 \<gamma>)"
 | "robust p t (cUntil x y c1 c2) \<gamma> = recurs_release_real 
@@ -659,9 +659,9 @@ lemma robust_sound_0:
   shows "\<And>p. (robust p t c 0 > 0) \<longrightarrow> (evals p t c)" 
        "\<And>p. (robust p t c 0 < 0) \<longrightarrow> \<not>(evals p t c)"
 proof (induct c)
-  case (cMu f r)
-  then show "\<And>p. (robust p t (cMu f r) 0 > 0) \<longrightarrow> (evals p t (cMu f r))" 
-       "\<And>p. (robust p t (cMu f r) 0 < 0) \<longrightarrow> \<not>(evals p t (cMu f r))"
+  case (cMu f ct r)
+  then show "\<And>p. (robust p t (cMu f ct r) 0 > 0) \<longrightarrow> (evals p t (cMu f ct r))" 
+       "\<And>p. (robust p t (cMu f ct r) 0 < 0) \<longrightarrow> \<not>(evals p t (cMu f ct r))"
     using recurs_exist_list_equiv
     by auto+
 next
@@ -915,15 +915,19 @@ proof -
   by metis+
 qed
 
+fun nthint :: "'a list \<Rightarrow> int \<Rightarrow> 'a" where
+"nthint [] n = undefined"
+| "nthint (x # xs) n = (if eqint n 0 then x else nthint xs ((absint n)-1))"
+
 fun Feval :: "cterm \<Rightarrow> real list \<Rightarrow> real" where
-"Feval (Get n) xs = xs!(nat n)"
+"Feval (Get n) xs = nthint xs n"
 | "Feval (Add c1 c2) xs = Feval c1 xs + Feval c2 xs"
 | "Feval (Mult c1 c2) xs = Feval c1 xs * Feval c2 xs"
 | "Feval (Uminus c) xs = -1 * (Feval c xs)"
 | "Feval (Divide c1 c2) xs = Feval c1 xs / Feval c2 xs"
 
 fun constraintright :: "real list constraint \<Rightarrow> bool" where
-"constraintright (cMu f r) = (\<exists>c. f = Feval c)"
+"constraintright (cMu f ct r) = (f = Feval)"
 | "constraintright (cNot c) = constraintright c"
 | "constraintright (cAnd c1 c2) = (constraintright c1 \<and> constraintright c2)"
 | "constraintright (cUntil x y c1 c2) = (constraintright c1 \<and> constraintright c2)"
@@ -932,6 +936,9 @@ typedef rconstraint = "{c. constraintright c}"
   morphisms to_constraint to_rconstraint 
   using constraintright.simps(1) 
   by blast
+
+declare to_constraint_inverse [simp]
+  to_rconstraint_inverse [simp]
 
 setup_lifting type_definition_rconstraint
 
@@ -957,7 +964,35 @@ proof -
     by (simp add: revals.rep_eq)+
 qed
 
-export_code revals rrobust
+(* Type constructors for code generation *)
+definition mkGet :: "int \<Rightarrow> cterm" where
+"mkGet n = Get n"
+
+definition mkAdd :: "cterm \<Rightarrow> cterm \<Rightarrow> cterm" where
+"mkAdd ct1 ct2 = Add ct1 ct2"
+
+definition mkMult :: "cterm \<Rightarrow> cterm \<Rightarrow> cterm" where
+"mkMult ct1 ct2 = Mult ct1 ct2"
+
+definition mkUminus :: "cterm \<Rightarrow> cterm" where
+"mkUminus ct = Uminus ct"
+
+definition mkDivide :: "cterm \<Rightarrow> cterm \<Rightarrow> cterm" where
+"mkDivide ct1 ct2 = Divide ct1 ct2"
+
+definition mkMu :: "(cterm \<Rightarrow> 'v \<Rightarrow> real) \<Rightarrow> cterm \<Rightarrow> real \<Rightarrow> 'v constraint" where
+  "mkMu f ct r = cMu f ct r"
+
+definition mkNot :: "'v constraint \<Rightarrow> 'v constraint" where
+  "mkNot c = cNot c"
+
+definition mkAnd :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+  "mkAnd c1 c2 = cAnd c1 c2"
+
+definition mkUntil :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+  "mkUntil x y c1 c2 = cUntil x y c1 c2"
+
+export_code mkGet mkAdd mkMult mkUminus mkDivide mkMu mkNot mkAnd mkUntil evals robust Feval
  in OCaml
   module_name STLLoss
 

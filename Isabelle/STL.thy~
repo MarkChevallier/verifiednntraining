@@ -3,8 +3,13 @@ theory STL
 
 begin
 
+datatype cterm = Get int | Add cterm cterm | Mult cterm cterm | Uminus cterm | Divide cterm cterm
+
 datatype 'v constraint = cMu "'v \<Rightarrow> real" real | cNot "'v constraint" 
   | cAnd "'v constraint" "'v constraint" | cUntil real real "'v constraint" "'v constraint"
+
+datatype rconstraint = crMu cterm real | crNot rconstraint 
+  | crAnd rconstraint rconstraint | crUntil real real rconstraint rconstraint
 
 fun subconstraint :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> bool" where
 "subconstraint c (cMu f r) = (c = cMu f r)"
