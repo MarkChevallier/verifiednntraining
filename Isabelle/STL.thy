@@ -3,7 +3,7 @@ theory STL
 
 begin
 
-datatype cterm = Get int | Add cterm cterm | Mult cterm cterm | Uminus cterm | Divide cterm cterm
+datatype cterm = Get int | Const real | Add cterm cterm | Mult cterm cterm | Uminus cterm | Divide cterm cterm
 
 datatype 'v constraint = cMu "cterm \<Rightarrow> 'v \<Rightarrow> real" cterm real | cNot "'v constraint" 
   | cAnd "'v constraint" "'v constraint" | cUntil real real "'v constraint" "'v constraint"

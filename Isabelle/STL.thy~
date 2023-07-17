@@ -5,20 +5,20 @@ begin
 
 datatype cterm = Get int | Add cterm cterm | Mult cterm cterm | Uminus cterm | Divide cterm cterm
 
-datatype 'v constraint = cMu "'v \<Rightarrow> real" real | cNot "'v constraint" 
+datatype 'v constraint = cMu "cterm \<Rightarrow> 'v \<Rightarrow> real" cterm real | cNot "'v constraint" 
   | cAnd "'v constraint" "'v constraint" | cUntil real real "'v constraint" "'v constraint"
 
 datatype rconstraint = crMu cterm real | crNot rconstraint 
   | crAnd rconstraint rconstraint | crUntil real real rconstraint rconstraint
 
 fun subconstraint :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"subconstraint c (cMu f r) = (c = cMu f r)"
+"subconstraint c (cMu f ct r) = (c = cMu f ct r)"
 | "subconstraint c (cNot c1) = (c = (cNot c1) \<or> c = c1 \<or> subconstraint c c1)"
 | "subconstraint c (cAnd c1 c2) = (c = (cAnd c1 c2) \<or> c = c1 \<or> c = c2 \<or> subconstraint c c1 \<or> subconstraint c c2)"
 | "subconstraint c (cUntil x y c1 c2) = (c = (cUntil x y c1 c2) \<or> c = c1 \<or> c = c2 \<or> subconstraint c c1 \<or> subconstraint c c2)"
 
 fun valid_constraint :: "real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"valid_constraint l (cMu f r) = (l \<ge> 0)"
+"valid_constraint l (cMu f ct r) = (l \<ge> 0)"
 | "valid_constraint l (cNot c) = (valid_constraint l c)"
 | "valid_constraint l (cAnd c1 c2) = ((valid_constraint l c1 \<and> valid_constraint l c2))"
 | "valid_constraint l (cUntil x y c1 c2) = 
@@ -28,16 +28,11 @@ fun valid_constraint :: "real \<Rightarrow> 'v constraint \<Rightarrow> bool" wh
     \<and> valid_constraint (l-x) c2
     \<and> valid_constraint (l-y) c2))"
 
-lemma vc_ind:
-  assumes "valid_constraint l c" "size c > 1"
-  shows"1=1"
-  by auto
-
 lemma vc_l:
   assumes "valid_constraint l c"
   shows "l\<ge>0"
 proof (insert assms, induct c)
-  case (cMu f r)
+  case (cMu f ct r)
   then show ?case 
     using valid_constraint.simps(1) 
     by blast
@@ -61,7 +56,7 @@ lemma vc_longer:
   assumes "r\<ge>0" "valid_constraint l c"
   shows "valid_constraint (l+r) c"
 proof (insert assms, induct c arbitrary:  l r)
-  case (cMu f r)
+  case (cMu f ct r)
   then show ?case 
     using valid_constraint.simps(1) 
     by auto
@@ -101,7 +96,7 @@ lemma vc_subconstraint:
   assumes "valid_constraint l c" "subconstraint c' c"
   shows "valid_constraint l c'"
 proof (insert assms, induction c)
-  case (cMu f r)
+  case (cMu f ct r)
   then show ?case 
     using subconstraint.simps(1) valid_constraint.simps(1)
     by force
@@ -123,7 +118,7 @@ next
 qed
 
 fun evalvc :: "(real \<Rightarrow> 'v) \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"evalvc t l (cMu f r) = (valid_constraint l (cMu f r) \<and> ((f (t 0)) > r))"
+"evalvc t l (cMu f ct r) = (valid_constraint l (cMu f ct r) \<and> ((f ct (t 0)) > r))"
 | "evalvc t l (cNot c) = (valid_constraint l (cNot c) \<and> (\<not>(evalvc t l c)))"
 | "evalvc t l (cAnd c1 c2) = (valid_constraint l (cAnd c1 c2) \<and> 
   ((evalvc t l c1) \<and> (evalvc t l c2)))"
@@ -132,7 +127,7 @@ fun evalvc :: "(real \<Rightarrow> 'v) \<Rightarrow> real \<Rightarrow> 'v const
     \<and> (\<forall>t''. t''\<ge>0\<and>t''\<le>t' \<longrightarrow> evalvc (\<lambda>r. t (r+t'')) (l-t'') c1)))"
 
 fun eval :: "(real \<Rightarrow> 'v) \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> bool" where
-"eval t l (cMu f r) = ((f (t 0)) > r)"
+"eval t l (cMu f ct r) = ((f ct (t 0)) > r)"
 | "eval t l (cNot c) = (\<not>(eval t l c))"
 | "eval t l (cAnd c1 c2) = ((eval t l c1) \<and> (eval t l c2))"
 | "eval t l (cUntil x y c1 c2) = (\<exists>t'\<ge>x. t'\<le>y \<and> t'\<le>l \<and> eval (\<lambda>r. t (r+t')) (l-t') c2 
@@ -145,7 +140,7 @@ lemma evalvc_vc:
   by metis
 
 definition cTrue :: "'v constraint" where
-"cTrue = cMu (\<lambda>r. 1) 0"
+"cTrue = cMu (\<lambda>ct r. 1) (Get 0) 0"
 
 lemma cTrue_vc:"valid_constraint l cTrue = (l\<ge>0)"
   using valid_constraint.simps(1) cTrue_def

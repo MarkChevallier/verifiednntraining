@@ -964,7 +964,35 @@ proof -
     by (simp add: revals.rep_eq)+
 qed
 
-export_code evals robust Feval
+(* Type constructors for code generation *)
+definition mkGet :: "int \<Rightarrow> cterm" where
+"mkGet n = Get n"
+
+definition mkAdd :: "cterm \<Rightarrow> cterm \<Rightarrow> cterm" where
+"mkAdd ct1 ct2 = Add ct1 ct2"
+
+definition mkMult :: "cterm \<Rightarrow> cterm \<Rightarrow> cterm" where
+"mkMult ct1 ct2 = Mult ct1 ct2"
+
+definition mkUminus :: "cterm \<Rightarrow> cterm" where
+"mkUminus ct = Uminus ct"
+
+definition mkDivide :: "cterm \<Rightarrow> cterm \<Rightarrow> cterm" where
+"mkDivide ct1 ct2 = Divide ct1 ct2"
+
+definition mkMu :: "(cterm \<Rightarrow> 'v \<Rightarrow> real) \<Rightarrow> cterm \<Rightarrow> real \<Rightarrow> 'v constraint" where
+  "mkMu f ct r = cMu f ct r"
+
+definition mkNot :: "'v constraint \<Rightarrow> 'v constraint" where
+  "mkNot c = cNot c"
+
+definition mkAnd :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+  "mkAnd c1 c2 = cAnd c1 c2"
+
+definition mkUntil :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+  "mkUntil x y c1 c2 = cUntil x y c1 c2"
+
+export_code mkGet mkAdd mkMult mkUminus mkDivide mkMu mkNot mkAnd mkUntil evals robust Feval
  in OCaml
   module_name STLLoss
 

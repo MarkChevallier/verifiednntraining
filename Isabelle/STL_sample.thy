@@ -921,10 +921,18 @@ fun nthint :: "'a list \<Rightarrow> int \<Rightarrow> 'a" where
 
 fun Feval :: "cterm \<Rightarrow> real list \<Rightarrow> real" where
 "Feval (Get n) xs = nthint xs n"
+| "Feval (Const r) xs = r"
 | "Feval (Add c1 c2) xs = Feval c1 xs + Feval c2 xs"
 | "Feval (Mult c1 c2) xs = Feval c1 xs * Feval c2 xs"
 | "Feval (Uminus c) xs = -1 * (Feval c xs)"
 | "Feval (Divide c1 c2) xs = Feval c1 xs / Feval c2 xs"
+
+fun tens_to_sig_prep :: "real list \<Rightarrow> (real \<times> real list)" where 
+"tens_to_sig_prep [] = (0,[])"
+| "tens_to_sig_prep (x#xs) = (x,xs)"
+
+definition tens_to_sig :: "real list list \<Rightarrow> (real \<times> real list) list" where
+"tens_to_sig xs = map tens_to_sig_prep xs"
 
 fun constraintright :: "real list constraint \<Rightarrow> bool" where
 "constraintright (cMu f ct r) = (f = Feval)"
@@ -968,6 +976,9 @@ qed
 definition mkGet :: "int \<Rightarrow> cterm" where
 "mkGet n = Get n"
 
+definition mkConst :: "real \<Rightarrow> cterm" where
+"mkConst r = Const r"
+
 definition mkAdd :: "cterm \<Rightarrow> cterm \<Rightarrow> cterm" where
 "mkAdd ct1 ct2 = Add ct1 ct2"
 
@@ -992,7 +1003,8 @@ definition mkAnd :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v 
 definition mkUntil :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
   "mkUntil x y c1 c2 = cUntil x y c1 c2"
 
-export_code mkGet mkAdd mkMult mkUminus mkDivide mkMu mkNot mkAnd mkUntil evals robust Feval
+export_code mkGet mkConst mkAdd mkMult mkUminus mkDivide mkMu mkNot mkAnd mkUntil evals robust Feval
+  tens_to_sig
  in OCaml
   module_name STLLoss
 
