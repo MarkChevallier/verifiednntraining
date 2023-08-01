@@ -1,9 +1,32 @@
 theory STL
-  imports Complex_Main STLLoss_max_min
+  imports Complex_Main STLLoss_max_min Code_Real_Approx_By_Float_2
 
 begin
 
-datatype cterm = Get int | Add cterm cterm | Mult cterm cterm | Uminus cterm | Divide cterm cterm
+datatype cterm = Get int | Const real | Add cterm cterm | Mult cterm cterm | Uminus cterm | Divide cterm cterm
+
+primrec (nonexhaustive) nthint :: "'a list \<Rightarrow> int \<Rightarrow> 'a" where
+nthint_Cons:"nthint (x # xs) n = (if eqint n 0 then x else nthint xs (n-1))"
+
+lemma nthint_Cons_0:"nthint (x#xs) 0 = x"
+  by simp
+
+lemma nthint_Cons_plusone:"n\<ge>0 \<longrightarrow> nthint (x#xs) (n+1) = nthint xs n"
+  by fastforce
+
+lemma eqint_eq:
+  fixes n :: int and m :: nat
+  assumes "n>0"
+  shows "eqint n m = (nat n = m)"
+  using assms nth_def by auto
+            
+fun Feval :: "cterm \<Rightarrow> real list \<Rightarrow> real" where
+"Feval (Get n) xs = nthint xs n"
+| "Feval (Const r) xs = r"
+| "Feval (Add c1 c2) xs = Feval c1 xs + Feval c2 xs"
+| "Feval (Mult c1 c2) xs = Feval c1 xs * Feval c2 xs"
+| "Feval (Uminus c) xs = -1 * (Feval c xs)"
+| "Feval (Divide c1 c2) xs = Feval c1 xs / Feval c2 xs"
 
 datatype 'v constraint = cMu "cterm \<Rightarrow> 'v \<Rightarrow> real" cterm real | cNot "'v constraint" 
   | cAnd "'v constraint" "'v constraint" | cUntil real real "'v constraint" "'v constraint"
@@ -140,7 +163,7 @@ lemma evalvc_vc:
   by metis
 
 definition cTrue :: "'v constraint" where
-"cTrue = cMu (\<lambda>ct r. 1) (Get 0) 0"
+"cTrue = cMu (\<lambda>ct r. 1) (Const 1) 0"
 
 lemma cTrue_vc:"valid_constraint l cTrue = (l\<ge>0)"
   using valid_constraint.simps(1) cTrue_def
@@ -257,7 +280,7 @@ proof -
       \<and> (\<not>(\<exists>t'\<ge>x. t'\<le>y \<and> valid_constraint (l-t') c \<and> (\<not>(evalvc (\<lambda>r. t (r+t')) (l-t') c)))))"
     using evalvc.simps(2) valid_constraint.simps(2)
     by blast
-  then have "evalvc t l (cAlways x y c) 
+  have "evalvc t l (cAlways x y c) 
     = (valid_constraint l (cAlways x y c) 
       \<and> (\<not>(\<exists>t'\<ge>x. t'\<le>y \<and> valid_constraint (l-x) c \<and> (\<not>(evalvc (\<lambda>r. t (r+t')) (l-t') c)))))"
     using vc_longer add_0 add_diff_cancel_left' add_le_cancel_left cAlways_vc diff_add_cancel

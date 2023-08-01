@@ -1,5 +1,5 @@
 theory STL_sample
-  imports STL Code_Real_Approx_By_Float_2
+  imports STL
 
 begin
 
@@ -655,6 +655,217 @@ fun robust :: "real \<Rightarrow> (real \<times> 'v) list \<Rightarrow> 'v const
     (\<lambda>z \<gamma>. Min_gamma_comp \<gamma> (fst z - (p+x)) (Min_gamma_comp \<gamma> ((p+y) - fst z) (robust (fst z) t c2 \<gamma>))) 
     (\<lambda>z \<gamma>. Max_gamma_comp \<gamma> (robust (fst z) t c1 \<gamma>) (p-fst z)) t \<gamma> (-1)"
 
+fun update_rl :: "real list \<Rightarrow> int \<Rightarrow> real \<Rightarrow> real list" where
+"update_rl [] j r = []" 
+| "update_rl (x#xs) j r = (if j = 0 then (r#xs) else (x#(update_rl xs (j-1) r)))"
+
+lemma update_rl_update:
+  fixes n :: nat
+  shows "update_rl xs (int n) r = list_update xs n r"
+proof (cases "xs=[]")
+  case True
+  then show ?thesis
+    by simp
+next
+  case False
+  then show ?thesis
+  proof (induction n arbitrary: xs)
+    case 0
+    then show ?case
+      using update_rl.simps
+      by (metis int_ops(1) list_update_code(2) update_rl.elims)
+  next
+    case (Suc m)
+    then have "xs = (hd xs)#(tl xs)"
+      using False
+      by simp
+    then have 1:"update_rl xs (int (Suc m)) r = ((hd xs)#(update_rl (tl xs) (int m) r))"
+      using update_rl.simps
+      by (smt (verit, ccfv_SIG) int_plus less_numeral_extra(4) of_nat_less_0_iff of_nat_neq_0 one_less_of_natD plus_1_eq_Suc)
+    then have "list_update xs (Suc m) r = ((hd xs)#(list_update (tl xs) m r))"
+      by (metis \<open>xs = hd xs # tl xs\<close> list_update_code(3))
+    then show ?case
+      using 1 Suc
+      by (metis list_update_nonempty update_rl.simps(1))
+  qed
+qed
+
+lemma nthint_nth:
+  fixes n :: nat
+  assumes "n<length xs"
+  shows "nthint xs (int n) = nth xs n"
+proof (insert assms, induction n arbitrary: xs)
+  case 0
+  then have "length xs > 0"
+    by blast
+  then have "xs = (hd xs)#(tl xs)"
+    by simp
+  then show ?case
+    by (metis int_ops(1) nth_Cons_0 nthint_Cons_0)
+next
+  case (Suc m)
+  then have "length xs > 0"
+    by auto
+  then have "xs = (hd xs)#(tl xs)"
+    by simp
+  have "length (tl xs) > 0"
+    using Suc.prems(1) Zero_not_Suc bot_nat_0.not_eq_extremum length_Cons less_Suc0 \<open>length xs > 0\<close>
+    by simp
+  then have "m<length (tl xs)"
+    using Suc.prems(1) 
+    by auto
+  then show ?case
+    using Suc \<open>m<length (tl xs)\<close> nth_Cons_Suc nthint_Cons_plusone \<open>xs = (hd xs)#(tl xs)\<close>
+    by (metis add.commute of_nat_0_le_iff of_nat_Suc)
+qed
+
+lemma nthint_update_rl_eq:
+  fixes n :: nat
+  assumes "n<length xs"
+  shows "nthint (update_rl xs (int n) r) (int n) = r"
+  using assms nthint_nth update_rl_update length_list_update nth_list_update_eq
+  by metis
+
+lemma nthint_update_rl_neq:
+  fixes n m :: nat
+  assumes "n<length xs" "k<length xs" "n\<noteq>k"
+  shows "nthint (update_rl xs (int n) r) (int k) = nthint xs (int k)"
+  using assms nthint_nth update_rl_update length_list_update nth_list_update_neq
+  by metis
+
+lemma lam_deriv:
+  fixes n j :: nat
+  assumes "n<length xs" "j<length xs"
+  shows "((\<lambda>y. nthint (update_rl xs j y) n) has_real_derivative (if n=j then 1 else 0)) (at x)"
+  using nthint_update_rl_eq assms nthint_update_rl_neq
+  by simp
+
+primrec update_signal :: "((real\<times>real list) list) \<Rightarrow> int \<Rightarrow> int \<Rightarrow> real \<Rightarrow> ((real\<times>real list) list)" where
+"update_signal [] i j = (\<lambda>x. [])"
+| "update_signal (y#ys) i j = (if i = 0 then (\<lambda>x. (fst y, (update_rl (snd y) j x))#ys)
+    else (if i < 0 then (\<lambda>x. (y#ys)) else (\<lambda>x. y # (update_signal ys (i-1) j x))))"
+
+fun valid_ct :: "cterm \<Rightarrow> real list \<Rightarrow> bool" where
+"valid_ct (Get n) xs = (nat n < length xs \<and> n\<ge>0)"
+| "valid_ct (Const r) xs = True"
+| "valid_ct (Add c1 c2) xs = (valid_ct c1 xs \<and> valid_ct c2 xs)"
+| "valid_ct (Mult c1 c2) xs = (valid_ct c1 xs \<and> valid_ct c2 xs)"
+| "valid_ct (Uminus c) xs = (valid_ct c xs)"
+| "valid_ct (Divide c1 c2) xs = (valid_ct c1 xs \<and> valid_ct c2 xs)"
+
+fun dFeval :: "cterm \<Rightarrow> real list \<Rightarrow> int \<Rightarrow> real" where
+"dFeval (Get n) xs m = (if n=m then 1 else 0)"
+| "dFeval (Const r) xs m = 0"
+| "dFeval (Add c1 c2) xs m = dFeval c1 xs m + dFeval c2 xs m"
+| "dFeval (Mult c1 c2) xs m = Feval c2 xs * dFeval c1 xs m + Feval c1 xs * dFeval c2 xs m"
+| "dFeval (Uminus c) xs m = -1 * (dFeval c xs m)"
+| "dFeval (Divide c1 c2) xs m = ((dFeval c1 xs m * Feval c2 xs) - (Feval c1 xs * dFeval c2 xs m)) / (Feval c2 xs * Feval c2 xs)"
+
+lemma dFeval_d_Get:
+  fixes m n :: nat 
+  assumes "m < length xs" "n < length xs"
+  shows "((\<lambda>y. Feval (Get (int n)) (update_rl xs (int m) y)) has_real_derivative 
+    (dFeval (Get (int n)) (update_rl xs (int m) x) (int m))) (at x)"
+  using assms Feval.simps(1) dFeval.simps(1) lam_deriv
+  by simp
+
+lemma dFeval_d:
+  fixes m :: nat
+  assumes "m<length xs" "valid_ct ct xs" 
+    "\<forall>c c1 c2. subcterm ct c \<and> c = (Divide c1 c2) \<longrightarrow> Feval c2 (update_rl xs (int m) x) \<noteq> 0"
+  shows "((\<lambda>y. Feval ct (update_rl xs (int m) y)) has_real_derivative 
+    (dFeval ct (update_rl xs (int m) x) (int m))) (at x)"
+proof (insert assms(2,3), induction ct)
+  case (Get n)
+  then have "nat n < length xs \<and> n \<ge> 0"
+    by auto
+  then have "((\<lambda>y. Feval (Get (int (nat n))) (update_rl xs (int m) y)) has_real_derivative 
+    (dFeval (Get (int (nat n))) (update_rl xs (int m) x) (int m))) (at x)"
+    using assms(1) dFeval_d_Get
+    by blast
+  then show ?case
+    using Get.prems 
+    by auto 
+next
+  case (Const r)
+  then show ?case
+    using dFeval.simps(2) Feval.simps(2)
+    by simp
+next
+  case (Add c1 c2)
+  then have "\<forall>c c3 c4. (subcterm c1 c \<and> c = (Divide c3 c4)) \<longrightarrow> Feval c4 (update_rl xs (int m) x) \<noteq> 0"
+    "\<forall>c c3 c4. subcterm c2 c \<and> c = (Divide c3 c4) \<longrightarrow> Feval c4 (update_rl xs (int m) x) \<noteq> 0"
+    using subcterm_trans
+    by auto+
+  then show ?case
+    using dFeval.simps(3) Feval.simps(3) Add
+    by (simp add: Deriv.field_differentiable_add)
+next
+  case (Mult c1 c2)
+  then have "valid_ct c1 xs \<and> valid_ct c2 xs"
+    by simp
+  then have "\<forall>c c3 c4. subcterm c1 c \<and> c = (Divide c3 c4) \<longrightarrow> Feval c4 (update_rl xs (int m) x) \<noteq> 0"
+    "\<forall>c c3 c4. subcterm c2 c \<and> c = (Divide c3 c4) \<longrightarrow> Feval c4 (update_rl xs (int m) x) \<noteq> 0"
+    using subcterm_trans Mult
+    by auto+
+  then have "((\<lambda>y. Feval c1 (update_rl xs (int m) y)) has_field_derivative dFeval c1 (update_rl xs (int m) x) (int m)) (at x within UNIV)"
+    "((\<lambda>y. Feval c2 (update_rl xs (int m) y)) has_field_derivative dFeval c2 (update_rl xs (int m) x) (int m)) (at x within UNIV)"
+    using Mult \<open>valid_ct c1 xs \<and> valid_ct c2 xs\<close>
+    by blast+
+  then have "((\<lambda>x. Feval c1 (update_rl xs (int m) x) * Feval c2 (update_rl xs (int m) x)) has_real_derivative
+     Feval c1 (update_rl xs (int m) x) * dFeval c2 (update_rl xs (int m) x) (int m) +
+     dFeval c1 (update_rl xs (int m) x) (int m) * Feval c2 (update_rl xs (int m) x))
+     (at x)"
+    using DERIV_mult'[where ?f="\<lambda>y. Feval c1 (update_rl xs (int m) y)" and ?D="dFeval c1 (update_rl xs (int m) x) (int m)"
+        and ?g="\<lambda>y. Feval c2 (update_rl xs (int m) y)" and ?E="dFeval c2 (update_rl xs (int m) x) (int m)" and ?x="x" and ?s="UNIV"]
+    by blast
+  then have "((\<lambda>x. Feval (Mult c1 c2) (update_rl xs (int m) x)) has_real_derivative
+     Feval c1 (update_rl xs (int m) x) * dFeval c2 (update_rl xs (int m) x) (int m) +
+     dFeval c1 (update_rl xs (int m) x) (int m) * Feval c2 (update_rl xs (int m) x))
+     (at x)"
+    using Feval.simps(4) 
+    by presburger
+  then show ?case
+    using dFeval.simps(4) [where ?c1.0="c1" and ?c2.0="c2" and ?xs="update_rl xs (int m) x" and ?m="int m"]
+      add.commute mult.commute
+    by metis
+next
+  case (Uminus c)
+  then have "valid_ct c xs" "\<forall>c5 c3 c4. subcterm c c5 \<and> c5 = (Divide c3 c4) \<longrightarrow> Feval c4 (update_rl xs (int m) x) \<noteq> 0"
+    apply simp using subcterm_trans Uminus
+    by auto
+  then have "((\<lambda>y. Feval c (update_rl xs (int m) y)) has_field_derivative dFeval c (update_rl xs (int m) x) (int m)) (at x within UNIV)"
+    using Uminus 
+    by simp
+  then show ?case
+    using Feval.simps(5) dFeval.simps(5) Deriv.field_differentiable_minus 
+    by fastforce
+next
+  case (Divide c1 c2)
+  have "subcterm (Divide c1 c2) (Divide c1 c2)"
+    by simp
+  then have "Feval c2 (update_rl xs (int m) x) \<noteq> 0"
+    using Divide(4) 
+    by simp
+  then have "valid_ct c1 xs \<and> valid_ct c2 xs"
+    using Divide
+    by simp
+  then have "\<forall>c c3 c4. subcterm c1 c \<and> c = (Divide c3 c4) \<longrightarrow> Feval c4 (update_rl xs (int m) x) \<noteq> 0"
+    "\<forall>c c3 c4. subcterm c2 c \<and> c = (Divide c3 c4) \<longrightarrow> Feval c4 (update_rl xs (int m) x) \<noteq> 0"
+    using subcterm_trans Divide
+    by auto+
+  then have "((\<lambda>y. Feval c1 (update_rl xs (int m) y)) has_field_derivative dFeval c1 (update_rl xs (int m) x) (int m)) (at x within UNIV)"
+    "((\<lambda>y. Feval c2 (update_rl xs (int m) y)) has_field_derivative dFeval c2 (update_rl xs (int m) x) (int m)) (at x within UNIV)"
+    using Divide \<open>valid_ct c1 xs \<and> valid_ct c2 xs\<close> 
+    by presburger+
+  then show ?case
+    using Feval.simps(6) dFeval.simps(6) \<open>Feval c2 (update_rl xs (int m) x) \<noteq> 0\<close> DERIV_divide
+    by fastforce
+qed
+
+fun drobust :: "real \<Rightarrow> (real \<times> real list) list \<Rightarrow> real list constraint \<Rightarrow> real \<Rightarrow> real" where
+"drobust p t c \<gamma> = 0"
+
 lemma robust_sound_0:
   shows "\<And>p. (robust p t c 0 > 0) \<longrightarrow> (evals p t c)" 
        "\<And>p. (robust p t c 0 < 0) \<longrightarrow> \<not>(evals p t c)"
@@ -915,18 +1126,6 @@ proof -
   by metis+
 qed
 
-fun nthint :: "'a list \<Rightarrow> int \<Rightarrow> 'a" where
-"nthint [] n = undefined"
-| "nthint (x # xs) n = (if eqint n 0 then x else nthint xs ((absint n)-1))"
-
-fun Feval :: "cterm \<Rightarrow> real list \<Rightarrow> real" where
-"Feval (Get n) xs = nthint xs n"
-| "Feval (Const r) xs = r"
-| "Feval (Add c1 c2) xs = Feval c1 xs + Feval c2 xs"
-| "Feval (Mult c1 c2) xs = Feval c1 xs * Feval c2 xs"
-| "Feval (Uminus c) xs = -1 * (Feval c xs)"
-| "Feval (Divide c1 c2) xs = Feval c1 xs / Feval c2 xs"
-
 fun tens_to_sig_prep :: "real list \<Rightarrow> (real \<times> real list)" where 
 "tens_to_sig_prep [] = (0,[])"
 | "tens_to_sig_prep (x#xs) = (x,xs)"
@@ -940,6 +1139,7 @@ fun constraintright :: "real list constraint \<Rightarrow> bool" where
 | "constraintright (cAnd c1 c2) = (constraintright c1 \<and> constraintright c2)"
 | "constraintright (cUntil x y c1 c2) = (constraintright c1 \<and> constraintright c2)"
 
+(*
 typedef rconstraint = "{c. constraintright c}"
   morphisms to_constraint to_rconstraint 
   using constraintright.simps(1) 
@@ -971,6 +1171,7 @@ proof -
     "x<0 \<longrightarrow> \<not>revals p t c"
     by (simp add: revals.rep_eq)+
 qed
+*)
 
 (* Type constructors for code generation *)
 definition mkGet :: "int \<Rightarrow> cterm" where
@@ -1000,12 +1201,21 @@ definition mkNot :: "'v constraint \<Rightarrow> 'v constraint" where
 definition mkAnd :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
   "mkAnd c1 c2 = cAnd c1 c2"
 
+definition mkOr :: "'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+  "mkOr c1 c2 = cOr c1 c2"
+
 definition mkUntil :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
   "mkUntil x y c1 c2 = cUntil x y c1 c2"
 
-export_code mkGet mkConst mkAdd mkMult mkUminus mkDivide mkMu mkNot mkAnd mkUntil evals robust Feval
-  tens_to_sig
- in OCaml
+definition mkEventually :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+  "mkEventually x y c = cEventually x y c"
+
+definition mkAlways :: "real \<Rightarrow> real \<Rightarrow> 'v constraint \<Rightarrow> 'v constraint" where
+  "mkAlways x y c = cAlways x y c"
+
+export_code mkGet mkConst mkAdd mkMult mkUminus mkDivide mkMu mkNot mkAnd mkOr mkUntil mkEventually
+  mkAlways evals robust Feval tens_to_sig
+  in OCaml
   module_name STLLoss
 
 end
