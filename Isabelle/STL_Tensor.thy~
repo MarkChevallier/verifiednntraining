@@ -1,0 +1,210 @@
+theory STL_Tensor
+
+imports Complex_Main Tensor Lequal_Nequal Nequal Tensor_Constants STL 
+  "List-Index.List_Index"
+begin
+
+(*
+tensor dimensions:
+time x state x batch
+
+- could change to:
+
+TENSOR
+1st subtensor: time
+2nd subtensor: 1st state variable
+3rd subtensor: 2nd state variable
+etc etc
+*)
+
+lemma nonempty_tensor_dims_not_0:
+  fixes A :: "'a tensor" and n m :: nat
+  assumes "length (dims A) = n" "m<n" "length (vec_list A) > 0"
+  shows "dims A!m > 0"
+proof -
+  have "prod_list (dims A) > 0"
+    using assms(3)
+    by simp
+  {
+    assume "\<not>dims A!m > 0"
+    then have "dims A!m = 0"
+      by fast
+    then have "0 \<in> set (dims A)"
+      by (metis assms(1) assms(2) list_update_id set_update_memI)
+    then have "prod_list (dims A) = 0"
+      by (simp add: prod_list_zero_iff)
+    then have False
+      using \<open>prod_list (dims A) > 0\<close>
+      by presburger}
+  then show ?thesis
+    by argo
+qed
+
+definition time_tensor :: "real tensor \<Rightarrow> real tensor" where
+"time_tensor A = select_dimension A 1 0"
+
+lemma time_tensor_def2:
+  fixes A :: "real tensor"
+  assumes "length (dims A) = 2"  
+  shows "time_tensor A = Abs_tensor ([(dims A)!0], 
+      (IArray (tensor_vec_from_lookup ([(dims A)!0]) (select_dimension_lookup A 1 0))))"
+proof -
+have "time_tensor A = select_dimension A 1 0"
+    using time_tensor_def
+    by fast
+  then have "time_tensor A = tensor_from_lookup (list_without (dims A) 1) (select_dimension_lookup A 1 0)"
+    using select_dimension_def
+    by auto
+  then have "time_tensor A = tensor_from_vec (list_without (dims A) 1) 
+      (IArray (tensor_vec_from_lookup (list_without (dims A) 1) (select_dimension_lookup A 1 0)))"
+    using tensor_from_lookup_def
+    by auto
+  then have "time_tensor A = Abs_tensor ((list_without (dims A) 1), 
+      (IArray (tensor_vec_from_lookup (list_without (dims A) 1) (select_dimension_lookup A 1 0))))"
+    using tensor_from_vec_def
+    by auto
+  then have "time_tensor A = Abs_tensor (take 1 (dims A)@drop 2 (dims A), 
+      (IArray (tensor_vec_from_lookup (take 1 (dims A)@drop 2 (dims A)) (select_dimension_lookup A 1 0))))"
+    using list_without_def nat_1_add_1
+    by presburger
+  then have "time_tensor A = Abs_tensor (take 1 (dims A)@[], 
+      (IArray (tensor_vec_from_lookup (take 1 (dims A)@[]) (select_dimension_lookup A 1 0))))"
+    using assms
+    by fastforce
+  then show "time_tensor A = Abs_tensor ([(dims A)!0], 
+      (IArray (tensor_vec_from_lookup ([(dims A)!0]) (select_dimension_lookup A 1 0))))"
+    using assms
+    by (simp add: take_Suc_conv_app_nth)
+qed
+
+lemma time_tensor_dims:
+  fixes A :: "real tensor"
+  assumes "length (dims A) = 2"  
+  shows "dims (time_tensor A) = [dims A!0]"
+  using assms time_tensor_def2 dims_tensor_from_lookup tensor_from_lookup_def tensor_from_vec_def
+  by metis
+
+lemma time_tensor_vec:
+  fixes A :: "real tensor"
+  assumes "length (dims A) = 2"  
+  shows "Tensor.vec (time_tensor A) = (IArray (tensor_vec_from_lookup ([(dims A)!0]) (select_dimension_lookup A 1 0)))"
+  using assms time_tensor_def2 vec_tensor_from_lookup tensor_from_lookup_def tensor_from_vec_def
+  by metis
+
+lemma time_tensor_lookup:
+  fixes A :: "real tensor" and i :: nat
+  assumes "length (dims A) = 2" "valid_index [i] [dims A!0]" "length (vec_list A) > 0"
+  shows "lookup (time_tensor A) [i] = lookup A [i,0]"
+proof -
+  have 0:"\<And>A. length A = 2 \<Longrightarrow> A=A!0#[A!1]"
+    by (metis (no_types, opaque_lifting) One_nat_def Suc_1 Suc_inject length_Cons list.size(3) nat.distinct(1) neq_Nil_conv nth_Cons_0 nth_Cons_Suc)
+  have "lookup (time_tensor A) [i] = lookup_imp (time_tensor A) [i]"
+    using assms lookup_equiv_lookup_imp time_tensor_dims
+    by metis
+  then have "lookup (time_tensor A) [i] = Tensor.vec (time_tensor A) !! flattened_index [dims A!0] [i]"
+    using lookup_imp_def assms(1) time_tensor_dims
+    by metis
+  then have "lookup (time_tensor A) [i] 
+    = (IArray (tensor_vec_from_lookup ([(dims A)!0]) (select_dimension_lookup A 1 0))) 
+      !! flattened_index [dims A!0] [i]"
+    using assms(1) time_tensor_vec
+    by presburger
+  then have "lookup (time_tensor A) [i] 
+    = (tensor_vec_from_lookup ([(dims A)!0]) (select_dimension_lookup A 1 0))
+      ! flattened_index [dims A!0] [i]"
+    by simp
+  then have "lookup (time_tensor A) [i]
+    = (tensor_vec_from_lookup ([(dims A)!0]) (\<lambda>is. lookup_imp A (place_at 0 1 is)))
+      ! flattened_index [dims A!0] [i]"
+    by (simp add: select_dimension_lookup_def)
+  then have "lookup (time_tensor A) [i]
+    = concat (map (\<lambda>i. [lookup_imp A (place_at 0 1 [i])] ) [0..<dims A!0])
+    ! flattened_index [dims A!0] [i]"
+    by simp
+  then have "lookup (time_tensor A) [i]
+    = concat (map (\<lambda>i. [lookup_imp A ((take 1 [i]) @ (0 # (drop 1 [i])))] ) [0..<dims A!0])
+    ! flattened_index [dims A!0] [i]"
+    by (simp add: place_at_def)
+  then have "lookup (time_tensor A) [i]
+    = concat (map (\<lambda>i. [lookup_imp A [i, 0]]) [0..<dims A!0])
+    ! flattened_index [dims A!0] [i]"
+    by simp
+  then have "lookup (time_tensor A) [i]
+    = concat (map (\<lambda>i. [Tensor.vec A !! flattened_index (dims A) [i,0]]) [0..<dims A!0])
+    ! flattened_index [dims A!0] [i]"
+    by (simp add: lookup_imp_def)
+  then have "lookup (time_tensor A) [i]
+    = concat (map (\<lambda>i. [lookup_imp A [i,0]]) [0..<dims A!0])!flattened_index [dims A!0] [i]"
+    by (simp add: lookup_imp_def)
+  then have "lookup (time_tensor A) [i]
+    = concat (map (\<lambda>i. [lookup_imp A [i,0]]) [0..<dims A!0])!i"
+    by fastforce
+  then have 1:"lookup (time_tensor A) [i]
+    = lookup_imp A [i,0]"
+    using assms(2)
+    by auto
+  have "dims A!1 > 0"
+    using assms(1,3) nonempty_tensor_dims_not_0 one_less_numeral_iff semiring_norm(76) 
+    by blast
+  then have 2:"[0] \<lhd> [dims A!1]"
+    using valid_index.simps
+    by metis
+  then have "dims A = dims A!0 # [dims A!1]"
+    using assms(1) 0
+    by auto
+  then have "[i,0] = i # [0] \<and> dims A = dims A!0 # [dims A!1] \<and> [0] \<lhd> [dims A!1] \<and> i < dims A!0"
+    using 2 assms(2) 
+    by auto
+  then have "valid_index [i,0] (dims A)"
+    by (metis valid_index.Cons)
+  then show ?thesis 
+    using 1 lookup_equiv_lookup_imp
+    by fastforce
+qed
+
+definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
+"valid_signal_tensor A = ((length (dims A) = 2) \<and> (sorted_wrt (<) (vec_list (time_tensor A))))"
+
+fun find_time_tensor :: "real tensor \<Rightarrow> real \<Rightarrow> nat" where
+"find_time_tensor A r = index (vec_list (time_tensor A)) r"
+
+fun inc_idx :: "nat list \<Rightarrow> nat list \<Rightarrow> nat list" where
+"inc_idx is dims = (if (is\<lhd>dims) then 
+
+definition find_index_tensor_pred :: "('a \<Rightarrow> bool) \<Rightarrow> 'a tensor \<Rightarrow> nat list \<Rightarrow> bool" where
+"find_index_tensor_pred P A is = (if (is\<lhd>dims A) then P (lookup_imp A is) else False)"
+
+definition find_index_tensor_idx ::  "('a \<Rightarrow> bool) \<Rightarrow> 'a tensor \<Rightarrow> nat list \<Rightarrow> bool" where
+"find_index_tensor_idx P A is = (if (is\<lhd>dims A) then 
+
+definition find_index_tensor :: "(real \<Rightarrow> bool) \<Rightarrow> real tensor \<Rightarrow> nat" where
+
+fun find_time_tensor2 :: "real tensor \<Rightarrow> real \<Rightarrow> nat" where
+"find_time_tensor A r = (if lookup_imp A [0,0] = r
+
+fun Teval :: "cterm \<Rightarrow> real tensor \<Rightarrow> nat \<Rightarrow> real" where
+"Teval (Get n) A m = lookup A [m,(nat n)]"
+| "Teval (Const r) A m = r"
+| "Teval (Add c1 c2) A m = Teval c1 A m + Teval c2 A m"
+| "Teval (Mult c1 c2) A m = Teval c1 A m * Teval c2 A m"
+| "Teval (Uminus c) A m = -1 * (Teval c A m)"
+| "Teval (Divide c1 c2) A m = Teval c1 A m / Teval c2 A m"
+
+fun evalst :: "real \<Rightarrow> real tensor \<Rightarrow> (real tensor) constraint \<Rightarrow> bool" where
+"evalst p A (cMu f ct r) = (if (recurs_exist_list (\<lambda>z. hd z = p) t) then (f ct (find_time t p) > r) else False)"
+| "evals p t (cNot c) = (\<not>(evals p t c))"
+| "evals p t (cAnd c1 c2) = ((evals p t c1) \<and> (evals p t c2))"
+| "evals p t (cUntil x y c1 c2) 
+  = recurs_release (\<lambda>z. hd z \<ge> p+x \<and> hd z \<le> p+y \<and> evals (hd z) t c2) (\<lambda>z. evals (hd z) t c1 \<or> hd z < p) t"
+
+(*
+fun flattened_index:: "nat list \<Rightarrow> nat list \<Rightarrow> nat" where
+ flattened_index_Nil_1: "flattened_index [] is = 0"
+| flattened_index_Nil_2: "flattened_index ds [] = 0"
+| flattened_index_Cons: "flattened_index (d#ds) (i#is) = (i * prod_list ds) + (flattened_index ds is)"
+
+definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
+"valid_signal_tensor s = sorted_wrt (<) (s)"
+*)
+
+end
