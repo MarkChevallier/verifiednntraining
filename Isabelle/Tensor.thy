@@ -523,8 +523,27 @@ theorem lookup_equiv_lookup_imp:
   shows "lookup A is = lookup_imp A is"
   using lookup_index lookup_def lookup_imp_def
   by (metis IArray.sub_def assms tensor_dim_vec_list_invariant vec_list_vec)
-  
 
+lemma "lookup (Abs_tensor ([3],IArray[0::real, 1, 2])) [0] = 0"
+proof -
+  let ?A="Abs_tensor ([3],IArray[0::real, 1, 2])"
+  have "Rep_tensor ?A=([3],IArray[0::real, 1, 2])"
+    by (metis Rep_tensor_inverse length_Cons list.size(3) numeral_3_eq_3 tensor_from_list_simp)
+  then have "dims ?A=[3] \<and> vec_list ?A = [0::real, 1, 2]"
+    using dims_def vec_list_def
+    by (metis eq_fst_iff list_of.simps snd_eqD)
+  then have "lookup ?A [0] = lookup_base [3] [0::real,1,2] [0]"
+    using lookup_def
+    by metis
+  then have "lookup ?A [0] = lookup_base [] (fixed_length_sublist [0::real,1,2] (prod_list []) 0) []"
+    using lookup_base.simps
+    by simp
+  then have "lookup ?A [0] = lookup_base [] (take 1 (drop 0 [0::real,1,2])) []"
+    using fixed_length_sublist_def
+    by (metis mult_0_right prod_list_nil)
+  then show ?thesis
+    by auto
+qed
 
 lemma flatten_unflatten_1:
   assumes "j < prod_list ds"

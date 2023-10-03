@@ -1,7 +1,6 @@
 theory STL_Tensor
 
 imports Complex_Main Tensor Lequal_Nequal Nequal Tensor_Constants STL 
-  "List-Index.List_Index"
 begin
 
 (*
@@ -40,6 +39,95 @@ proof -
     by argo
 qed
 
+definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
+"valid_signal_tensor A = 
+  (length (dims A) = 2 \<and> length (vec_list A) > 0
+  \<and> (\<forall>m n. m < dims A!0 \<and> n < dims A!0 \<and> m<n \<longrightarrow> lookup_imp A [m,0] < lookup_imp A [n,0]))"
+
+datatype ctermt = Get nat | Const real | Add ctermt ctermt | Mult ctermt ctermt | Uminus ctermt | Divide ctermt ctermt
+
+fun Teval :: "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" where
+"Teval (Get m) n A = lookup_imp A [n,m]"
+| "Teval (Const r) n A = r"
+| "Teval (Add c1 c2) n A = Teval c1 n A + Teval c2 n A"
+| "Teval (Mult c1 c2) n A = Teval c1 n A * Teval c2 n A"
+| "Teval (Uminus c) n A = -1 * (Teval c n A)"
+| "Teval (Divide c1 c2) n A = Teval c1 n A / Teval c2 n A"
+
+datatype constraintt = ctMu "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" ctermt real | ctNot constraintt 
+  | ctAnd constraintt constraintt | ctUntil real real constraintt constraintt
+
+function evalt :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt \<Rightarrow> bool" where
+"evalt A n (ctMu f ct r) = ((f ct n A) > r)"
+| "evalt A n (ctNot c) = (\<not>(evalt A n c))"
+| "evalt A n (ctAnd c1 c2) = ((evalt A n c1) \<and> (evalt A n c2))"
+| "evalt A n (ctUntil x y c1 c2) 
+  = (if n \<ge> (dims A!0) \<or> y < 0 then False else 
+        (x > 0 \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
+        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 \<and> evalt A n c2)
+        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 
+          \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2)))"
+  by pat_completeness auto
+termination by (relation "Wellfounded.measure (\<lambda>(A,n,c). size c + (dims A!0 - n))") auto 
+
+lemma evalt_Until_works:
+  assumes "valid_signal_tensor A"
+  shows "evalt A m (ctUntil x y c1 c2) = 
+    (\<exists>n\<ge>m. n<dims A!0 \<and> evalt A n c1 \<and> evalt A n c2
+      \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+      \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+        \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+          \<and> evalt A n' c1)))"
+proof (induction "dims A!0 - 1 - m")
+  case 0
+  then have "m\<ge>dims A!0 - 1"
+    by simp
+  then show ?case
+  proof -
+    {assume ass1:"evalt A m (ctUntil x y c1 c2)"
+      then have a:"m<dims A!0 \<and> y\<ge>0"
+        using evalt.simps(4) linorder_not_le
+        by metis
+      then have b:"(x > 0 \<and> evalt A (m+1) (ctUntil (x+lookup_imp A [m,0]-lookup_imp A [m+1,0]) (y+lookup_imp A [m,0]-lookup_imp A [m+1,0]) c1 c2))
+          \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A m c1 \<and> evalt A m c2)
+          \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A m c1 
+            \<and> evalt A (m+1) (ctUntil (x+lookup_imp A [m,0]-lookup_imp A [m+1,0]) (y+lookup_imp A [m,0]-lookup_imp A [m+1,0]) c1 c2))"
+        using ass1
+        by auto
+      then have "\<exists>n\<ge>m. n<dims A!0 \<and> evalt A n c1 \<and> evalt A n c2
+      \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+        \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+          \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+            \<and> evalt A n' c1))"
+      proof (cases "m\<ge>dims A!0")
+        case True
+        then show ?thesis
+          using \<open>m<dims A!0 \<and> y\<ge>0\<close> 
+          by auto
+      next
+        case False
+        then have "m=dims A!0-1"
+          using \<open>m\<ge>dims A!0 - 1\<close>
+          by linarith
+
+      proof (cases "x+lookup_imp A [m,0] \<le> lookup_imp A [m,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [m,0]
+        \<and> evalt A m c1 \<and> evalt A m c2")
+        case True
+        then show ?thesis
+          using b 
+          by auto
+      next
+        case False
+        then have "(x > 0 \<and> evalt A (m+1) (ctUntil (x+lookup_imp A [m,0]-lookup_imp A [m+1,0]) (y+lookup_imp A [m,0]-lookup_imp A [m+1,0]) c1 c2))
+          \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A m c1 
+            \<and> evalt A (m+1) (ctUntil (x+lookup_imp A [m,0]-lookup_imp A [m+1,0]) (y+lookup_imp A [m,0]-lookup_imp A [m+1,0]) c1 c2))"
+          using ass1 b
+          by argo
+
+
+
+
+(*
 definition time_tensor :: "real tensor \<Rightarrow> real tensor" where
 "time_tensor A = select_dimension A 1 0"
 
@@ -165,37 +253,136 @@ qed
 definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
 "valid_signal_tensor A = ((length (dims A) = 2) \<and> (sorted_wrt (<) (vec_list (time_tensor A))))"
 
-fun find_time_tensor :: "real tensor \<Rightarrow> real \<Rightarrow> nat" where
-"find_time_tensor A r = index (vec_list (time_tensor A)) r"
+fun find_1d_tensor :: "'a tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat" where
+  "find_1d_tensor A r 0 = 0"
+| "find_1d_tensor A r (Suc n) = (if (Suc n) > dims A!0 \<or> length (dims A) > 1 then 0 else
+    (if lookup_imp A [n] = r then Suc n else find_1d_tensor A r n))"
 
-fun inc_idx :: "nat list \<Rightarrow> nat list \<Rightarrow> nat list" where
-"inc_idx is dims = (if (is\<lhd>dims) then 
+lemma find_1d_tensor_pos_imp_exists:
+  assumes "find_1d_tensor A r (dims A!0) > 0"
+  shows "\<exists>n. n < dims A!0 \<and> lookup_imp A [n] = r"
+proof (rule ccontr)
+  assume "\<not>(\<exists>n. n < dims A!0 \<and> lookup_imp A [n] = r)"
+  then have "\<forall>n\<ge>0. n\<ge>dims A!0 \<or> lookup_imp A [n] \<noteq> r"
+    using leI 
+    by auto
+  then have "\<And>n. n\<ge>0 \<longrightarrow> (n\<ge>dims A!0 \<or> lookup_imp A [n] \<noteq> r)"
+    by blast
+  then have "find_1d_tensor A r (dims A!0) = 0"
+  proof -
+    have "\<And>m. m>0 \<and> m<dims A!0 \<longrightarrow> find_1d_tensor A r m = find_1d_tensor A r (m-1)"
+      by (smt (verit, best) Suc_eq_plus1_left Suc_le_D Zero_not_Suc assms
+          \<open>\<not> (\<exists>n. n < dims A ! 0 \<and> lookup_imp A [n] = r)\<close> add_Suc_right add_eq_self_zero 
+          diff_Suc_1 diff_Suc_Suc diff_add_0 diff_is_0_eq diff_is_0_eq' diff_le_self 
+          dual_order.order_iff_strict find_1d_tensor.simps(2) less_eq_Suc_le less_eq_nat.simps(1) 
+          less_natE list_decode.cases minus_nat.diff_0 not_less_eq_eq old.nat.exhaust zero_neq_one)
+    {fix m :: nat
+      assume "m>0 \<and> m<dims A!0"
+      have "find_1d_tensor A r m = find_1d_tensor A r 0"
+      proof (induction m)
+        case 0
+        then show ?case 
+          by simp
+      next
+        case (Suc m)
+        then show ?case 
+          using \<open>\<not>(\<exists>n<dims A!0. lookup_imp A [n] = r)\<close> 
+          by force
+      qed}
+    then show ?thesis
+      using \<open>\<not>(\<exists>n<dims A!0. lookup_imp A [n] = r)\<close> find_1d_tensor.elims less_Suc_eq_0_disj 
+        not_less_eq
+      by (smt (verit, ccfv_SIG) )
+  qed
+  then show False
+    using assms
+    by simp
+qed
 
-definition find_index_tensor_pred :: "('a \<Rightarrow> bool) \<Rightarrow> 'a tensor \<Rightarrow> nat list \<Rightarrow> bool" where
-"find_index_tensor_pred P A is = (if (is\<lhd>dims A) then P (lookup_imp A is) else False)"
+lemma find_1d_tensor_works:
+  assumes "find_1d_tensor A r (dims A!0) > 0" "length (dims A) = 1"
+  shows "lookup_imp A [(find_1d_tensor A r (dims A!0)) - 1] = r"
+proof -
+  obtain N where "N\<noteq>{} \<and> N = {n. n<dims A!0 \<and> lookup_imp A [n] = r}"
+    using assms find_1d_tensor_pos_imp_exists empty_Collect_eq not_Cons_self2
+    by (smt (verit, del_insts))
+  then have N_defn:"finite N \<and> N\<noteq>{} \<and> N = {n. n<dims A!0 \<and> lookup_imp A [n] = r}"
+    by auto
+  then obtain nmax where nmax_defn:"nmax = Max N \<and> nmax \<in> N \<and> nmax < dims A!0"
+    using Max_in 
+    by auto
+  then have "\<forall>n\<in>N. n\<le>nmax"
+    using eq_Max_iff N_defn
+    by blast
+  then have "\<forall>n>nmax. n\<notin>N"
+    by auto
+  then have "\<forall>n>nmax. n<dims A!0 \<longrightarrow> lookup_imp A [n] \<noteq> r"
+    using N_defn 
+    by blast
+  then have "\<forall>n>nmax. n\<ge>dims A!0 \<or> lookup_imp A [n] \<noteq> r"
+    by auto
+  then have "\<forall>n>nmax. n\<ge>dims A!0 \<or> find_1d_tensor A r (Suc n) = find_1d_tensor A r n"
+    using assms(2) 
+    by auto
+  then have "\<forall>n. Suc (n+nmax)\<ge>dims A!0 \<or> find_1d_tensor A r (Suc (Suc (n+nmax))) = find_1d_tensor A r (Suc (n+nmax))"
+    using less_add_Suc2 
+    by blast
+  {fix n :: nat
+    have "Suc (n+nmax)\<ge>dims A!0 \<or> find_1d_tensor A r (Suc (Suc (n+nmax))) = find_1d_tensor A r (Suc nmax)"
+    proof (induction n)
+      case 0
+      then show ?case
+        using \<open>\<forall>n. Suc (n+nmax)\<ge>dims A!0 \<or> find_1d_tensor A r (Suc (Suc (n+nmax))) = find_1d_tensor A r (Suc (n+nmax))\<close>
+        by fastforce
+    next
+      case (Suc k)
+      then show ?case
+        using \<open>\<forall>n. Suc (n+nmax)\<ge>dims A!0 \<or> find_1d_tensor A r (Suc (Suc (n+nmax))) = find_1d_tensor A r (Suc (n+nmax))\<close>
+        by fastforce
+    qed}
+  then have "\<forall>n. Suc (n+nmax)\<ge>dims A!0 \<or> find_1d_tensor A r (Suc (Suc (n+nmax))) = find_1d_tensor A r (Suc nmax)"
+    by simp
+  then have "\<forall>n. Suc (Suc (n+nmax))>dims A!0 \<or> find_1d_tensor A r (Suc (Suc (n+nmax))) = find_1d_tensor A r (Suc nmax)"
+    by force
+  then have "(\<exists>n. Suc (Suc (n+nmax)) = dims A!0) \<or> Suc nmax = dims A!0"
+    using nmax_defn N_defn add.commute add.right_neutral add_Suc_right less_imp_Suc_add 
+      list_decode.cases less_natE not0_implies_Suc
+    by metis
+  then have "find_1d_tensor A r (dims A!0) = find_1d_tensor A r (Suc nmax)"
+    using \<open>\<forall>n. Suc (Suc (n+nmax))>dims A!0 \<or> find_1d_tensor A r (Suc (Suc (n+nmax))) = find_1d_tensor A r (Suc nmax)\<close>
+    by (metis dual_order.strict_iff_not)
+  then have "find_1d_tensor A r (dims A!0) = Suc nmax"
+    using assms(2) nmax_defn N_defn
+    by auto
+  then show ?thesis
+    using nmax_defn N_defn
+    by auto
+qed
 
-definition find_index_tensor_idx ::  "('a \<Rightarrow> bool) \<Rightarrow> 'a tensor \<Rightarrow> nat list \<Rightarrow> bool" where
-"find_index_tensor_idx P A is = (if (is\<lhd>dims A) then 
+definition find_time_tensor :: "real tensor \<Rightarrow> real \<Rightarrow> nat" where
+"find_time_tensor A r = find_1d_tensor (time_tensor A) r (dims (time_tensor A)!0)"
 
-definition find_index_tensor :: "(real \<Rightarrow> bool) \<Rightarrow> real tensor \<Rightarrow> nat" where
+lemma find_time_tensor_works:
+  assumes "find_time_tensor A r > 0" "length (dims A) = 2"
+  shows "lookup_imp (time_tensor A) [(find_time_tensor A r) - 1] = r"
+  using find_time_tensor_def find_1d_tensor_works assms 
+  by (metis One_nat_def length_Cons list.size(3) time_tensor_dims)
 
-fun find_time_tensor2 :: "real tensor \<Rightarrow> real \<Rightarrow> nat" where
-"find_time_tensor A r = (if lookup_imp A [0,0] = r
-
-fun Teval :: "cterm \<Rightarrow> real tensor \<Rightarrow> nat \<Rightarrow> real" where
-"Teval (Get n) A m = lookup A [m,(nat n)]"
-| "Teval (Const r) A m = r"
-| "Teval (Add c1 c2) A m = Teval c1 A m + Teval c2 A m"
-| "Teval (Mult c1 c2) A m = Teval c1 A m * Teval c2 A m"
-| "Teval (Uminus c) A m = -1 * (Teval c A m)"
-| "Teval (Divide c1 c2) A m = Teval c1 A m / Teval c2 A m"
+fun Teval :: "cterm \<Rightarrow> real tensor \<Rightarrow> real" where
+"Teval (Get n) A = lookup_imp A [(nat n)]"
+| "Teval (Const r) A = r"
+| "Teval (Add c1 c2) A = Teval c1 A + Teval c2 A"
+| "Teval (Mult c1 c2) A = Teval c1 A * Teval c2 A"
+| "Teval (Uminus c) A = -1 * (Teval c A)"
+| "Teval (Divide c1 c2) A = Teval c1 A / Teval c2 A"
 
 fun evalst :: "real \<Rightarrow> real tensor \<Rightarrow> (real tensor) constraint \<Rightarrow> bool" where
-"evalst p A (cMu f ct r) = (if (recurs_exist_list (\<lambda>z. hd z = p) t) then (f ct (find_time t p) > r) else False)"
-| "evals p t (cNot c) = (\<not>(evals p t c))"
-| "evals p t (cAnd c1 c2) = ((evals p t c1) \<and> (evals p t c2))"
-| "evals p t (cUntil x y c1 c2) 
-  = recurs_release (\<lambda>z. hd z \<ge> p+x \<and> hd z \<le> p+y \<and> evals (hd z) t c2) (\<lambda>z. evals (hd z) t c1 \<or> hd z < p) t"
+"evalst p A (cMu f ct r) = (if (find_time_tensor A p > 0) 
+  then (f ct (select_dimension A 0 (find_time_tensor A p - 1)) > r) else False)"
+| "evalst p A (cNot c) = (\<not>(evalst p A c))"
+| "evalst p A (cAnd c1 c2) = ((evalst p A c1) \<and> (evalst p A c2))"
+| "evalst p A (cUntil x y c1 c2) = False"
+*)
 
 (*
 fun flattened_index:: "nat list \<Rightarrow> nat list \<Rightarrow> nat" where

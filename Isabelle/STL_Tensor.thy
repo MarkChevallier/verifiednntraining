@@ -39,6 +39,120 @@ proof -
     by argo
 qed
 
+definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
+"valid_signal_tensor A = 
+  (length (dims A) = 2 \<and> length (vec_list A) > 0
+  \<and> (\<forall>m n. m < dims A!0 \<and> n < dims A!0 \<and> m<n \<longrightarrow> lookup_imp A [m,0] < lookup_imp A [n,0]))"
+
+datatype ctermt = Get nat | Const real | Add ctermt ctermt | Mult ctermt ctermt | Uminus ctermt | Divide ctermt ctermt
+
+fun Teval :: "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" where
+"Teval (Get m) n A = lookup_imp A [n,m]"
+| "Teval (Const r) n A = r"
+| "Teval (Add c1 c2) n A = Teval c1 n A + Teval c2 n A"
+| "Teval (Mult c1 c2) n A = Teval c1 n A * Teval c2 n A"
+| "Teval (Uminus c) n A = -1 * (Teval c n A)"
+| "Teval (Divide c1 c2) n A = Teval c1 n A / Teval c2 n A"
+
+datatype constraintt = ctMu "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" ctermt real | ctNot constraintt 
+  | ctAnd constraintt constraintt | ctUntil real real constraintt constraintt
+
+function evalt :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt \<Rightarrow> bool" where
+"evalt A n (ctMu f ct r) = ((f ct n A) > r)"
+| "evalt A n (ctNot c) = (\<not>(evalt A n c))"
+| "evalt A n (ctAnd c1 c2) = ((evalt A n c1) \<and> (evalt A n c2))"
+| "evalt A n (ctUntil x y c1 c2) 
+  = (if n \<ge> (dims A!0) \<or> y < 0 then False else 
+        (x > 0 \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
+        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 \<and> evalt A n c2)
+        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 
+          \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2)))"
+  by pat_completeness auto
+termination by (relation "Wellfounded.measure (\<lambda>(A,n,c). size c + (dims A!0 - n))") auto 
+
+lemma evalt_Until_works:
+  assumes "valid_signal_tensor A"
+  shows "evalt A m (ctUntil x y c1 c2) = 
+    (\<exists>n\<ge>m. n<dims A!0 \<and> evalt A n c1 \<and> evalt A n c2
+      \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+      \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+        \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+          \<and> evalt A n' c1)))"
+proof -
+  obtain dA where dA_defn:"dA = dims A!0"
+    by simp
+  then show ?thesis
+  proof (induction "dA - 1 - m")
+    case 0
+    then have "m\<ge>dA - 1"
+      by simp
+    then show ?case
+    proof -
+      {assume ass1:"evalt A m (ctUntil x y c1 c2)"
+        have "\<And>x y c1 c2. \<not>(evalt A (m+1) (ctUntil x y c1 c2))"
+          using \<open>dA - 1 \<le> m\<close> le_diff_conv dA_defn 
+          by auto
+        then have b:"x \<le> 0 \<and> y \<ge> 0 \<and> evalt A m c1 \<and> evalt A m c2"
+          using ass1 evalt.simps(4)
+          by metis
+        then have "\<exists>n\<ge>m. n<dA \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+          \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1))"
+          using ass1 evalt.simps(4) leI le_antisym le_refl dA_defn
+          by (smt (verit))}
+      then have oneway:"evalt A m (ctUntil x y c1 c2) \<Longrightarrow> (\<exists>n\<ge>m. n<dims A!0 \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+          \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1)))"
+        using dA_defn
+        by blast
+      {assume ass2:"\<exists>n\<ge>m. n<dA \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+          \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1))"
+        then obtain n where n_defn:"n\<ge>m \<and> n<dA \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+          \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1))"
+          by blast
+        then have "n=m"
+          using \<open>dA - 1 \<le> m\<close>
+          by linarith
+        then have "m<dA \<and> evalt A m c1 \<and> evalt A m c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [m,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [m,0]
+          \<and> (\<forall>n'\<le>m. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1))"
+          using n_defn 
+          by blast
+        then have "m<dA \<and> x\<le>0 \<and> y\<ge> 0 \<and> evalt A m c1 \<and> evalt A m c2"
+          by argo
+        then have "evalt A m (ctUntil x y c1 c2)"
+          using evalt.simps(4) dA_defn
+          by force}
+      then show ?thesis
+        using oneway dA_defn
+        by blast
+    qed
+    next
+      case (Suc k)
+      then have "evalt A (dA - 1 - k) (ctUntil x y c1 c2) = 
+      (\<exists>n\<ge>(dA - 1 - k). n<dA \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [(dA - 1 - k),0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [(dA - 1 - k),0] \<ge> lookup_imp A [n,0]
+        \<and> (\<forall>n'\<le>n. n'\<ge>(dA - 1 - k) \<longrightarrow> x+lookup_imp A [(dA - 1 - k),0] > lookup_imp A [n',0]
+          \<or> (x+lookup_imp A [(dA - 1 - k),0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [(dA - 1 - k),0] \<ge> lookup_imp A [n',0]
+            \<and> evalt A n' c1)))"
+        sledgehammer
+
+
+
+
+(*
 definition time_tensor :: "real tensor \<Rightarrow> real tensor" where
 "time_tensor A = select_dimension A 1 0"
 
@@ -293,6 +407,7 @@ fun evalst :: "real \<Rightarrow> real tensor \<Rightarrow> (real tensor) constr
 | "evalst p A (cNot c) = (\<not>(evalst p A c))"
 | "evalst p A (cAnd c1 c2) = ((evalst p A c1) \<and> (evalst p A c2))"
 | "evalst p A (cUntil x y c1 c2) = False"
+*)
 
 (*
 fun flattened_index:: "nat list \<Rightarrow> nat list \<Rightarrow> nat" where
