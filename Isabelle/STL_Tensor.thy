@@ -1,6 +1,6 @@
 theory STL_Tensor
 
-imports Complex_Main Tensor Lequal_Nequal Nequal Tensor_Constants STL 
+imports Complex_Main Tensor Lequal_Nequal Nequal Tensor_Constants STL HOL.Divides
 begin
 
 (*
@@ -43,6 +43,76 @@ definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
 "valid_signal_tensor A = 
   (length (dims A) = 2 \<and> length (vec_list A) > 0
   \<and> (\<forall>m n. m < dims A!0 \<and> n < dims A!0 \<and> m<n \<longrightarrow> lookup_imp A [m,0] < lookup_imp A [n,0]))"
+
+(* if you use tensor_1d_binary_search_n starting with L = 0 and R = dims A!0-1, this should return
+(Suc n) where the lookup for n-1 \<le> a and for n \<ge> a; it returns (Suc 0) if lookup for 0 \<ge> a. 
+It should return 0 if no such n exists. *) 
+
+function tensor_1d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+"tensor_1d_binary_search_n A a L R X = (if L>R \<or> ((L+R) div 2) \<le> X then 0 else
+  (if L=R then (if lookup_imp A [L] \<ge> a \<and> lookup_imp A [L-1] \<le> a then Suc L else 0) else
+    (if lookup_imp A [(L+R) div 2] \<ge> a \<and> lookup_imp A [((L+R) div 2)-1] \<le> a then Suc ((L+R) div 2) else
+      tensor_1d_binary_search_n A a (if lookup_imp A [(L+R) div 2] < a then (((L+R) div 2)+1) else L) 
+        (if lookup_imp A [(L+R) div 2 - 1] > a then (((L+R) div 2)-1) else R) X)))"
+  by pat_completeness auto
+termination by (relation "Wellfounded.measure (\<lambda>(A,a,L,R,X). R-L)") auto
+
+(* OLD MANUAL TERMINATION PROOF
+
+apply simp
+proof -
+  {fix A :: "'a tensor" and a :: 'a and L R :: nat
+  assume a1:"\<not>R < L" and a2:"L\<noteq>R"
+    and a3:"\<not>(a \<le> lookup_imp A [(L + R) div 2] \<and> lookup_imp A [(L + R) div 2 - 1] \<le> a)"
+  then have "a > lookup_imp A [(L + R) div 2] \<or> lookup_imp A [(L + R) div 2 - 1] > a"
+    by fastforce
+  then have 1:"((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
+        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
+        = ((L + R) div 2 - 1) - L)
+        \<or> ((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
+        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
+        = R - ((L + R) div 2 + 1))
+        \<or> ((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
+        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
+        = ((L + R) div 2 - 1) - ((L + R) div 2 + 1))"
+    by presburger
+  have "(if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
+        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L) < R - L"
+  proof -
+    have "\<And>a b::nat. a>b \<longrightarrow> (a+b) div 2 - 1 < a" "\<And>a b::nat. a>b \<longrightarrow> (a+b) div 2 + 1 > b"
+      by auto
+    then show ?thesis
+      using 1 a1 a2
+      by (smt (verit) add.commute add_less_imp_less_left cancel_ab_semigroup_add_class.diff_right_commute diff_add_zero diff_less_mono2 less_or_eq_imp_le linordered_semidom_class.add_diff_inverse log_zero ordered_cancel_comm_monoid_diff_class.add_diff_inverse)
+  qed
+  then have "((A, a, if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L,
+         if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R),
+        A, a, L, R)
+       \<in> Wellfounded.measure (\<lambda>(A, a, L, R). R - L)"
+    by auto}
+  then show "\<And>(A::'a tensor) (a::'a) (L::nat) (R::nat).
+       \<not> R < L \<Longrightarrow>
+       L \<noteq> R \<Longrightarrow>
+       \<not> (a \<le> lookup_imp A [(L + R) div 2] \<and> lookup_imp A [(L + R) div 2 - 1] \<le> a) \<Longrightarrow>
+       ((A, a, if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L,
+         if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R),
+        A, a, L, R)
+       \<in> Wellfounded.measure (\<lambda>(A, a, L, R). R - L)"
+    by blast
+qed *)
+
+function tensor_2d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+"tensor_2d_binary_search_n A a L R X = (if L>R \<or> ((L+R) div 2) \<le> X then 0 else
+  (if L=R then (if lookup_imp A [L,0] \<ge> a \<and> lookup_imp A [L-1,0] \<le> a then Suc L else 0) else
+    (if lookup_imp A [(L+R) div 2,0] \<ge> a \<and> lookup_imp A [((L+R) div 2)-1,0] \<le> a then Suc ((L+R) div 2) else
+      tensor_2d_binary_search_n A a (if lookup_imp A [(L+R) div 2,0] < a then (((L+R) div 2)+1) else L) 
+        (if lookup_imp A [(L+R) div 2 - 1,0] > a then (((L+R) div 2)-1) else R) X)))"
+  by pat_completeness auto
+termination by (relation "Wellfounded.measure (\<lambda>(A,a,L,R,X). R-L)") auto
+
+definition tensor_2d_binary_search :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat" where
+"tensor_2d_binary_search A a L = (if lookup_imp A [L,0] \<ge> a then Suc L else
+  tensor_2d_binary_search_n A a L (dims A!0) L)"
 
 datatype ctermt = Get nat | Const real | Add ctermt ctermt | Mult ctermt ctermt | Uminus ctermt | Divide ctermt ctermt
 
@@ -141,12 +211,15 @@ proof -
     qed
     next
       case (Suc k)
+      have "k = (dA - 1 - m) = (m = (dA - 1 - k))"
+        by (metis Suc.hyps(2) Suc_leD diff_diff_cancel diff_le_self n_not_Suc_n)
       then have "evalt A (dA - 1 - k) (ctUntil x y c1 c2) = 
       (\<exists>n\<ge>(dA - 1 - k). n<dA \<and> evalt A n c1 \<and> evalt A n c2
         \<and> x+lookup_imp A [(dA - 1 - k),0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [(dA - 1 - k),0] \<ge> lookup_imp A [n,0]
         \<and> (\<forall>n'\<le>n. n'\<ge>(dA - 1 - k) \<longrightarrow> x+lookup_imp A [(dA - 1 - k),0] > lookup_imp A [n',0]
           \<or> (x+lookup_imp A [(dA - 1 - k),0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [(dA - 1 - k),0] \<ge> lookup_imp A [n',0]
             \<and> evalt A n' c1)))"
+        using Suc
         sledgehammer
 
 

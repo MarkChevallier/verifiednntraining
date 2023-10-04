@@ -1,6 +1,6 @@
 theory STL_Tensor
 
-imports Complex_Main Tensor Lequal_Nequal Nequal Tensor_Constants STL 
+imports Complex_Main Tensor Lequal_Nequal Nequal Tensor_Constants STL HOL.Divides
 begin
 
 (*
@@ -44,6 +44,57 @@ definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
   (length (dims A) = 2 \<and> length (vec_list A) > 0
   \<and> (\<forall>m n. m < dims A!0 \<and> n < dims A!0 \<and> m<n \<longrightarrow> lookup_imp A [m,0] < lookup_imp A [n,0]))"
 
+(* if you use tensor_1d_binary_search_n starting with L = 0 and R = dims A!0-1, this should return
+(Suc n) where the lookup for n-1 \<le> a and for n \<ge> a; it returns (Suc 0) if lookup for 0 \<ge> a. 
+It should return 0 if no such n exists. *) 
+
+function tensor_1d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+"tensor_1d_binary_search_n A a L R = (if L\<ge>R then 0 else 
+  (if lookup_imp A [(L+R) div 2] \<ge> a \<and> (((L+R) div 2) = 0 \<or> lookup_imp A [((L+R) div 2)-1] \<le> a) then Suc ((L+R) div 2) else
+    tensor_1d_binary_search_n A a (if lookup_imp A [(L+R) div 2] < a then (((L+R) div 2)+1) else L) 
+      (if lookup_imp A [(L+R) div 2 - 1] > a then (((L+R) div 2)-1) else R)))"
+  by pat_completeness auto
+termination apply (relation "Wellfounded.measure (\<lambda>(A,a,L,R). R-L)")
+   apply simp
+proof -
+  fix A :: "'a tensor" and a :: 'a and L R :: nat
+  assume a1:"R > L\<or>
+           L = R \<and>
+           \<not> (a \<le> lookup_imp A [(L + R) div 2] \<and> ((L + R) div 2 = 0 \<or> lookup_imp A [(L + R) div 2 - 1] \<le> a))" 
+    and a2:"\<not> (a \<le> lookup_imp A [(L + R) div 2] \<and> ((L + R) div 2 = 0 \<or> lookup_imp A [(L + R) div 2 - 1] \<le> a))"
+  then have "R > L"
+    sledgehammer
+  then have "\<not>(a \<le> lookup_imp A [(L + R) div 2]) \<or> \<not>(((L + R) div 2 = 0 \<or> lookup_imp A [(L + R) div 2 - 1] \<le> a))"
+    using a2
+    by simp
+  then have "a > lookup_imp A [(L + R) div 2] \<or> ((L + R) div 2 \<noteq> 0 \<and> lookup_imp A [(L + R) div 2 - 1] > a)"
+    by force
+  then have "a > lookup_imp A [(L + R) div 2] \<or> lookup_imp A [(L + R) div 2 - 1] > a"
+    by blast
+  then have 1:"((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
+        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
+        = ((L + R) div 2 - 1) - L)
+        \<or> ((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
+        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
+        = R - ((L + R) div 2 + 1))
+        \<or> ((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
+        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
+        = ((L + R) div 2 - 1) - ((L + R) div 2 + 1))"
+    by presburger
+  then have "(if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
+        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L) < R - L"
+  proof -
+    have "\<And>a b::nat. a>b \<longrightarrow> (a+b) div 2 - 1 < a" "\<And>a b::nat. a>b \<longrightarrow> (a+b) div 2 + 1 > b"
+      by auto
+    then show ?thesis
+      using 1 \<open>R>L\<close>
+      by (smt (verit) add.commute add_less_imp_less_left cancel_ab_semigroup_add_class.diff_right_commute diff_add_zero diff_less_mono2 less_or_eq_imp_le linordered_semidom_class.add_diff_inverse log_zero ordered_cancel_comm_monoid_diff_class.add_diff_inverse)
+  qed
+    
+
+  
+
+
 datatype ctermt = Get nat | Const real | Add ctermt ctermt | Mult ctermt ctermt | Uminus ctermt | Divide ctermt ctermt
 
 fun Teval :: "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" where
@@ -78,51 +129,79 @@ lemma evalt_Until_works:
       \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
         \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
           \<and> evalt A n' c1)))"
-proof (induction "dims A!0 - 1 - m")
-  case 0
-  then have "m\<ge>dims A!0 - 1"
+proof -
+  obtain dA where dA_defn:"dA = dims A!0"
     by simp
-  then show ?case
-  proof -
-    {assume ass1:"evalt A m (ctUntil x y c1 c2)"
-      then have a:"m<dims A!0 \<and> y\<ge>0"
-        using evalt.simps(4) linorder_not_le
-        by metis
-      then have b:"(x > 0 \<and> evalt A (m+1) (ctUntil (x+lookup_imp A [m,0]-lookup_imp A [m+1,0]) (y+lookup_imp A [m,0]-lookup_imp A [m+1,0]) c1 c2))
-          \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A m c1 \<and> evalt A m c2)
-          \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A m c1 
-            \<and> evalt A (m+1) (ctUntil (x+lookup_imp A [m,0]-lookup_imp A [m+1,0]) (y+lookup_imp A [m,0]-lookup_imp A [m+1,0]) c1 c2))"
-        using ass1
-        by auto
-      then have "\<exists>n\<ge>m. n<dims A!0 \<and> evalt A n c1 \<and> evalt A n c2
-      \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
-        \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
-          \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
-            \<and> evalt A n' c1))"
-      proof (cases "m\<ge>dims A!0")
-        case True
-        then show ?thesis
-          using \<open>m<dims A!0 \<and> y\<ge>0\<close> 
+  then show ?thesis
+  proof (induction "dA - 1 - m")
+    case 0
+    then have "m\<ge>dA - 1"
+      by simp
+    then show ?case
+    proof -
+      {assume ass1:"evalt A m (ctUntil x y c1 c2)"
+        have "\<And>x y c1 c2. \<not>(evalt A (m+1) (ctUntil x y c1 c2))"
+          using \<open>dA - 1 \<le> m\<close> le_diff_conv dA_defn 
           by auto
-      next
-        case False
-        then have "m=dims A!0-1"
-          using \<open>m\<ge>dims A!0 - 1\<close>
+        then have b:"x \<le> 0 \<and> y \<ge> 0 \<and> evalt A m c1 \<and> evalt A m c2"
+          using ass1 evalt.simps(4)
+          by metis
+        then have "\<exists>n\<ge>m. n<dA \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+          \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1))"
+          using ass1 evalt.simps(4) leI le_antisym le_refl dA_defn
+          by (smt (verit))}
+      then have oneway:"evalt A m (ctUntil x y c1 c2) \<Longrightarrow> (\<exists>n\<ge>m. n<dims A!0 \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+          \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1)))"
+        using dA_defn
+        by blast
+      {assume ass2:"\<exists>n\<ge>m. n<dA \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+          \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1))"
+        then obtain n where n_defn:"n\<ge>m \<and> n<dA \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n,0]
+          \<and> (\<forall>n'\<le>n. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1))"
+          by blast
+        then have "n=m"
+          using \<open>dA - 1 \<le> m\<close>
           by linarith
-
-      proof (cases "x+lookup_imp A [m,0] \<le> lookup_imp A [m,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [m,0]
-        \<and> evalt A m c1 \<and> evalt A m c2")
-        case True
-        then show ?thesis
-          using b 
-          by auto
-      next
-        case False
-        then have "(x > 0 \<and> evalt A (m+1) (ctUntil (x+lookup_imp A [m,0]-lookup_imp A [m+1,0]) (y+lookup_imp A [m,0]-lookup_imp A [m+1,0]) c1 c2))
-          \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A m c1 
-            \<and> evalt A (m+1) (ctUntil (x+lookup_imp A [m,0]-lookup_imp A [m+1,0]) (y+lookup_imp A [m,0]-lookup_imp A [m+1,0]) c1 c2))"
-          using ass1 b
+        then have "m<dA \<and> evalt A m c1 \<and> evalt A m c2
+        \<and> x+lookup_imp A [m,0] \<le> lookup_imp A [m,0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [m,0]
+          \<and> (\<forall>n'\<le>m. n'\<ge>m \<longrightarrow> x+lookup_imp A [m,0] > lookup_imp A [n',0]
+            \<or> (x+lookup_imp A [m,0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [m,0] \<ge> lookup_imp A [n',0]
+              \<and> evalt A n' c1))"
+          using n_defn 
+          by blast
+        then have "m<dA \<and> x\<le>0 \<and> y\<ge> 0 \<and> evalt A m c1 \<and> evalt A m c2"
           by argo
+        then have "evalt A m (ctUntil x y c1 c2)"
+          using evalt.simps(4) dA_defn
+          by force}
+      then show ?thesis
+        using oneway dA_defn
+        by blast
+    qed
+    next
+      case (Suc k)
+      have "k = (dA - 1 - m) = (m = (dA - 1 - k))"
+        by (metis Suc.hyps(2) Suc_leD diff_diff_cancel diff_le_self n_not_Suc_n)
+      then have "evalt A (dA - 1 - k) (ctUntil x y c1 c2) = 
+      (\<exists>n\<ge>(dA - 1 - k). n<dA \<and> evalt A n c1 \<and> evalt A n c2
+        \<and> x+lookup_imp A [(dA - 1 - k),0] \<le> lookup_imp A [n,0] \<and> y+lookup_imp A [(dA - 1 - k),0] \<ge> lookup_imp A [n,0]
+        \<and> (\<forall>n'\<le>n. n'\<ge>(dA - 1 - k) \<longrightarrow> x+lookup_imp A [(dA - 1 - k),0] > lookup_imp A [n',0]
+          \<or> (x+lookup_imp A [(dA - 1 - k),0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [(dA - 1 - k),0] \<ge> lookup_imp A [n',0]
+            \<and> evalt A n' c1)))"
+        using Suc
+        sledgehammer
 
 
 
