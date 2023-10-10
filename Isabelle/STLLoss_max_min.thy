@@ -820,7 +820,7 @@ next
   then have "(\<lambda>y. Max_gamma \<gamma> y b) = (\<lambda>y. max y b)"
     by simp
   then show ?thesis 
-    using max_continuous continuous_on_product_then_coordinatewise_UNIV
+    using max_continuous continuous_on_product_then_coordinatewise
     by metis
 qed
 
@@ -837,7 +837,7 @@ next
   then have "(\<lambda>y. Max_gamma \<gamma> a y) = (\<lambda>y. max a y)"
     by simp
   then show ?thesis 
-    using max_continuous continuous_on_product_then_coordinatewise_UNIV continuous_on_cong
+    using max_continuous continuous_on_product_then_coordinatewise continuous_on_cong
     by (smt (verit, best))
 qed
 
@@ -865,7 +865,7 @@ next
   then have "(\<lambda>y. Min_gamma \<gamma> y b) = (\<lambda>y. min y b)"
     by simp
   then show ?thesis 
-    using min_continuous continuous_on_product_then_coordinatewise_UNIV
+    using min_continuous continuous_on_product_then_coordinatewise
     by metis
 qed
 

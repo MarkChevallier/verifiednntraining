@@ -48,23 +48,69 @@ definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
 (Suc n) where the lookup for n-1 \<le> a and for n \<ge> a; it returns (Suc 0) if lookup for 0 \<ge> a. 
 It should return 0 if no such n exists. *) 
 
-function tensor_1d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
-"tensor_1d_binary_search_n A a L R X = (if L>R \<or> ((L+R) div 2) \<le> X then 0 else
-  (if L=R then (if lookup_imp A [L] \<ge> a \<and> lookup_imp A [L-1] \<le> a then Suc L else 0) else
-    (if lookup_imp A [(L+R) div 2] \<ge> a \<and> lookup_imp A [((L+R) div 2)-1] \<le> a then Suc ((L+R) div 2) else
-      tensor_1d_binary_search_n A a (if lookup_imp A [(L+R) div 2] < a then (((L+R) div 2)+1) else L) 
-        (if lookup_imp A [(L+R) div 2 - 1] > a then (((L+R) div 2)-1) else R) X)))"
+definition interval_start_1d :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
+"interval_start_1d A a X n = (n \<ge> X \<and> lookup_imp A [n] \<ge> a \<and> (lookup_imp A [n-1] \<le> a \<or> n=X))"
+
+definition interval_start_2d :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
+"interval_start_2d A a X n = (n \<ge> X \<and> lookup_imp A [n,0] \<ge> a \<and> (lookup_imp A [n-1,0] \<le> a \<or> n=X))"
+
+(* 
+A is the tensor (1d in this case)
+a is the item being searched for. IMPORTANT NOTE: we are not necessarily looking for the exact value.
+  We are looking for the first entry in the tensor that could conceivably belong to an interval beginning
+  with a. In other words, if entry n is a correct return, then n-1 has to be <a (or n has to be the
+  first possible value).
+L is the left margin of the current area being searched.
+R is the right margin of the current area being searched.
+X is the first possible area that is valid to be searched in. IMPORTANT NOTE: If we were searching a 
+  full tensor, this would be 0. But if we are searching a tensor as part of an Until operator, X would 
+  be the interval that the Until is first called in.
+*)
+(*
+function tensor_1d_binary_search_n_alt :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat list \<Rightarrow> nat \<Rightarrow> nat option" where
+  "tensor_1d_binary_search_n_alt A a [] X = None" 
+| "tensor_1d_binary_search_n_alt A a [L] X = (if lookup_imp A [L] \<ge> a \<and> (lookup_imp A [L-1] < a \<or> L=X) 
+        then Some (L) 
+        else None)"
+| "tensor_1d_binary_search_n_alt A a (R#Ls) X = (if lookup_imp A [(hd Ls+R) div 2] \<ge> a \<and> (lookup_imp A [((hd Ls+R) div 2)-1] < a \<or> (hd Ls+R) div 2 = X) 
+        then Some ((hd Ls+R) div 2) 
+        else tensor_1d_binary_search_n_alt A a
+          ((if lookup_imp A [(hd Ls+R) div 2 - 1] \<ge> a 
+            then (((hd Ls+R) div 2)-1) 
+            else R) # 
+          [(if lookup_imp A [(hd Ls+R) div 2] < a 
+            then (((hd Ls+R) div 2)+1) 
+            else hd Ls)]) 
+           X)"
+  by pat_completeness *)
+  
+function tensor_1d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat option" where
+"tensor_1d_binary_search_n A a L R X = 
+  (if L>R 
+    then None 
+    else (if L=R 
+      then (if lookup_imp A [L] \<ge> a \<and> (lookup_imp A [L-1] < a \<or> L=X) 
+        then Some L 
+        else None) 
+      else (if lookup_imp A [(L+R) div 2] \<ge> a \<and> (lookup_imp A [((L+R) div 2)-1] < a \<or> (L+R) div 2 = X) 
+        then Some ((L+R) div 2) 
+        else tensor_1d_binary_search_n A a 
+          (if lookup_imp A [(L+R) div 2] < a 
+            then (((L+R) div 2)+1) 
+            else L) 
+          (if lookup_imp A [(L+R) div 2 - 1] \<ge> a 
+            then (((L+R) div 2)-1) 
+            else R) X)))"
   by pat_completeness auto
 termination by (relation "Wellfounded.measure (\<lambda>(A,a,L,R,X). R-L)") auto
 
-(* OLD MANUAL TERMINATION PROOF
-
-apply simp
+(* OLD MANUAL TERMINATION PROOF  
+  apply simp
 proof -
   {fix A :: "'a tensor" and a :: 'a and L R :: nat
   assume a1:"\<not>R < L" and a2:"L\<noteq>R"
-    and a3:"\<not>(a \<le> lookup_imp A [(L + R) div 2] \<and> lookup_imp A [(L + R) div 2 - 1] \<le> a)"
-  then have "a > lookup_imp A [(L + R) div 2] \<or> lookup_imp A [(L + R) div 2 - 1] > a"
+    and a3:"\<not>(a \<le> lookup_imp A [(L + R) div 2] \<and> lookup_imp A [(L + R) div 2 - 1] < a)"
+  then have "a > lookup_imp A [(L + R) div 2] \<or> lookup_imp A [(L + R) div 2 - 1] \<ge> a"
     by fastforce
   then have 1:"((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
         (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
@@ -99,7 +145,45 @@ proof -
         A, a, L, R)
        \<in> Wellfounded.measure (\<lambda>(A, a, L, R). R - L)"
     by blast
-qed *)
+qed 
+*)
+
+thm tensor_1d_binary_search_n.induct
+
+(*lemma tensor_1d_binary_search_n_induct:
+  assumes "length (dims A) = 1" "length (vec_list A) > 0" "L\<ge>X"
+    "\<forall>m n. m<dims A!0 \<and> n <dims A!0 \<and> m<n \<longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+      "tensor_1d_binary_search_n A a (if lookup_imp A [(L+R) div 2] < a
+                  then (((L+R) div 2)+1) 
+                  else L) 
+                (if lookup_imp A [(L+R) div 2 - 1] \<ge> a 
+                  then (((L+R) div 2)-1) 
+                  else R) X = Some n"
+    shows "tensor_1d_binary_search_n A a L R X = Some n"
+proof (induct rule: tensor_1d_binary_search_n.induct 
+    [where ?P="tensor_1d_binary_search_n A a L R X = Some n"], insert assms)*)
+
+lemma tensor_1d_binary_search_n_correct:
+  assumes "length (dims A) = 1" "length (vec_list A) > 0" "L\<ge>X"
+    "\<forall>m n. m<dims A!0 \<and> n <dims A!0 \<and> m<n \<longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+  shows "(tensor_1d_binary_search_n A a L R X = (Some n))
+    = (n \<ge> L \<and> n \<le> R \<and> lookup_imp A [n] \<ge> a \<and> (\<forall>m<n. m\<ge>X \<longrightarrow> lookup_imp A [m] < a))"
+proof (induct rule: tensor_1d_binary_search_n.induct 
+    [where ?P="(\<lambda>A a L R X. (tensor_1d_binary_search_n A a L R X = (Some n)
+    = (n\<ge>L \<and> n \<le> R \<and> lookup_imp A [n] \<ge> a \<and> (\<forall>m<n. m\<ge>X \<longrightarrow> lookup_imp A [m] < a))))"])
+  case (1 A a L R X)
+
+  then show "(tensor_1d_binary_search_n A a L R X = Some n) =
+     (L \<le> n \<and> n \<le> R \<and> a \<le> lookup_imp A [n] \<and> (\<forall>m<n. X \<le> m \<longrightarrow> lookup_imp A [m] < a))"
+    
+
+
+
+qed
+
+
+fun tensor_1d_binary_search :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat option" where
+"tensor_1d_binary_search A a L = tensor_1d_binary_search_n A a L (dims A!0) L"
 
 function tensor_2d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
 "tensor_2d_binary_search_n A a L R X = (if L>R \<or> ((L+R) div 2) \<le> X then 0 else
