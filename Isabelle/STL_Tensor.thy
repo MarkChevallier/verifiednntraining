@@ -54,36 +54,6 @@ definition interval_start_1d :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarr
 definition interval_start_2d :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
 "interval_start_2d A a X n = (n \<ge> X \<and> lookup_imp A [n,0] \<ge> a \<and> (lookup_imp A [n-1,0] \<le> a \<or> n=X))"
 
-(* 
-A is the tensor (1d in this case)
-a is the item being searched for. IMPORTANT NOTE: we are not necessarily looking for the exact value.
-  We are looking for the first entry in the tensor that could conceivably belong to an interval beginning
-  with a. In other words, if entry n is a correct return, then n-1 has to be <a (or n has to be the
-  first possible value).
-L is the left margin of the current area being searched.
-R is the right margin of the current area being searched.
-X is the first possible area that is valid to be searched in. IMPORTANT NOTE: If we were searching a 
-  full tensor, this would be 0. But if we are searching a tensor as part of an Until operator, X would 
-  be the interval that the Until is first called in.
-*)
-(*
-function tensor_1d_binary_search_n_alt :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat list \<Rightarrow> nat \<Rightarrow> nat option" where
-  "tensor_1d_binary_search_n_alt A a [] X = None" 
-| "tensor_1d_binary_search_n_alt A a [L] X = (if lookup_imp A [L] \<ge> a \<and> (lookup_imp A [L-1] < a \<or> L=X) 
-        then Some (L) 
-        else None)"
-| "tensor_1d_binary_search_n_alt A a (R#Ls) X = (if lookup_imp A [(hd Ls+R) div 2] \<ge> a \<and> (lookup_imp A [((hd Ls+R) div 2)-1] < a \<or> (hd Ls+R) div 2 = X) 
-        then Some ((hd Ls+R) div 2) 
-        else tensor_1d_binary_search_n_alt A a
-          ((if lookup_imp A [(hd Ls+R) div 2 - 1] \<ge> a 
-            then (((hd Ls+R) div 2)-1) 
-            else R) # 
-          [(if lookup_imp A [(hd Ls+R) div 2] < a 
-            then (((hd Ls+R) div 2)+1) 
-            else hd Ls)]) 
-           X)"
-  by pat_completeness *)
-
 (*
   Offset is initial starting index
   Start+offset is the current iteration's starting index
@@ -114,11 +84,11 @@ function tensor_1d_binary_search_n_alt :: "'a::linorder tensor \<Rightarrow> 'a 
   Could short-circuit in some situations of general case (check if midpoint is exactly what we want by chance).
   May be better as another definition refining this one just for code-generation purposes?
 *)
-function (sequential) first_above_threshold_1D :: "('a :: linorder) tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat option"
+function (sequential) first_above_threshold_1D :: "('a::linorder) tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat option"
   where
     "first_above_threshold_1D A a offset start 0 =
       ( if lookup_imp A [offset + start] < a then None
-        else if offset + start = 0 then Some 0
+        else if start = 0 then Some offset
         else if lookup_imp A [nat.pred (offset + start)] < a then Some (offset + start)
         else None)"
   | "first_above_threshold_1D A a offset start width =
@@ -159,8 +129,11 @@ lemma first_above_threshold_1D_lower_bound:
   using assms
 proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D.induct)
   case (1 A a offset start)
+  then have "\<not>(lookup_imp A [offset + start] < a)"
+    by fastforce
   then show ?case
-    by simp (metis nle_le not_None_eq option.inject)
+    using nle_le not_None_eq option.inject 1
+    by (metis add.right_neutral first_above_threshold_1D.simps(1))
 next
   case (2 A a offset start v)
   then show ?case
@@ -194,8 +167,11 @@ lemma first_above_threshold_1D_upper_bound:
   using assms
 proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D.induct)
   case (1 A a offset start)
+  then have "\<not>(lookup_imp A [offset + start] < a)"
+    by fastforce
   then show ?case
-    by simp (metis nle_le not_None_eq option.inject)
+    using nle_le not_None_eq option.inject 1
+    by (metis add.right_neutral first_above_threshold_1D.simps(1))
 next
   case (2 A a offset start v)
   then show ?case
@@ -218,8 +194,11 @@ lemma first_above_threshold_1D_geq_threshold:
   using assms
 proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D.induct)
   case (1 A a offset start)
+  then have "\<not>(lookup_imp A [offset + start] < a)"
+    by fastforce
   then show ?case
-    by simp (metis linorder_not_less option.inject option.simps(3))
+    using linorder_not_less option.inject option.simps(3) 1
+    by (metis add.right_neutral first_above_threshold_1D.simps(1))
 next
   case (2 A a offset start v)
   then show ?case
@@ -249,8 +228,7 @@ proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D
 
     have c3: "lookup_imp A [nat.pred (offset + start)] < a"
       using 1(3) c1 c2
-      by (simp del: add_eq_0_iff_both_eq_0 add_is_0) (metis option.discI)
-
+      by (metis "1.prems"(1) "1.prems"(2) first_above_threshold_1D.simps(1) linorder_not_less option.inject option.simps(3))
     have n_neq_0: "n \<noteq> 0"
       using 1(2) c2 by linarith
 
@@ -271,7 +249,8 @@ proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D
       qed
     qed
     moreover have "lookup_imp A [nat.pred n] < a"
-      using 1(3) c3 c1 by (metis option.inject first_above_threshold_1D.simps(1))
+      using 1(3) c3 c1 
+      by (metis add_cancel_right_right first_above_threshold_1D.simps(1) option.inject)
     ultimately show ?thesis
       by simp
   qed
@@ -288,120 +267,6 @@ next
       using 2(2-9) by simp
   qed
 qed
-
-function tensor_1d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat option" where
-"tensor_1d_binary_search_n A a L R X = 
-  (if L>R 
-    then None 
-    else (if L=R 
-      then (if lookup_imp A [L] \<ge> a \<and> (lookup_imp A [L-1] < a \<or> L=X) 
-        then Some L 
-        else None) 
-      else (if lookup_imp A [(L+R) div 2] \<ge> a \<and> (lookup_imp A [((L+R) div 2)-1] < a \<or> (L+R) div 2 = X) 
-        then Some ((L+R) div 2) 
-        else tensor_1d_binary_search_n A a 
-          (if lookup_imp A [(L+R) div 2] < a 
-            then (((L+R) div 2)+1) 
-            else L) 
-          (if lookup_imp A [(L+R) div 2 - 1] \<ge> a 
-            then (((L+R) div 2)-1) 
-            else R) X)))"
-  by pat_completeness auto
-termination by (relation "Wellfounded.measure (\<lambda>(A,a,L,R,X). R-L)") auto
-
-(* OLD MANUAL TERMINATION PROOF  
-  apply simp
-proof -
-  {fix A :: "'a tensor" and a :: 'a and L R :: nat
-  assume a1:"\<not>R < L" and a2:"L\<noteq>R"
-    and a3:"\<not>(a \<le> lookup_imp A [(L + R) div 2] \<and> lookup_imp A [(L + R) div 2 - 1] < a)"
-  then have "a > lookup_imp A [(L + R) div 2] \<or> lookup_imp A [(L + R) div 2 - 1] \<ge> a"
-    by fastforce
-  then have 1:"((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
-        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
-        = ((L + R) div 2 - 1) - L)
-        \<or> ((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
-        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
-        = R - ((L + R) div 2 + 1))
-        \<or> ((if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
-        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L)
-        = ((L + R) div 2 - 1) - ((L + R) div 2 + 1))"
-    by presburger
-  have "(if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R) - 
-        (if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L) < R - L"
-  proof -
-    have "\<And>a b::nat. a>b \<longrightarrow> (a+b) div 2 - 1 < a" "\<And>a b::nat. a>b \<longrightarrow> (a+b) div 2 + 1 > b"
-      by auto
-    then show ?thesis
-      using 1 a1 a2
-      by (smt (verit) add.commute add_less_imp_less_left cancel_ab_semigroup_add_class.diff_right_commute diff_add_zero diff_less_mono2 less_or_eq_imp_le linordered_semidom_class.add_diff_inverse log_zero ordered_cancel_comm_monoid_diff_class.add_diff_inverse)
-  qed
-  then have "((A, a, if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L,
-         if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R),
-        A, a, L, R)
-       \<in> Wellfounded.measure (\<lambda>(A, a, L, R). R - L)"
-    by auto}
-  then show "\<And>(A::'a tensor) (a::'a) (L::nat) (R::nat).
-       \<not> R < L \<Longrightarrow>
-       L \<noteq> R \<Longrightarrow>
-       \<not> (a \<le> lookup_imp A [(L + R) div 2] \<and> lookup_imp A [(L + R) div 2 - 1] \<le> a) \<Longrightarrow>
-       ((A, a, if lookup_imp A [(L + R) div 2] < a then (L + R) div 2 + 1 else L,
-         if a < lookup_imp A [(L + R) div 2 - 1] then (L + R) div 2 - 1 else R),
-        A, a, L, R)
-       \<in> Wellfounded.measure (\<lambda>(A, a, L, R). R - L)"
-    by blast
-qed 
-*)
-
-thm tensor_1d_binary_search_n.induct
-
-(*lemma tensor_1d_binary_search_n_induct:
-  assumes "length (dims A) = 1" "length (vec_list A) > 0" "L\<ge>X"
-    "\<forall>m n. m<dims A!0 \<and> n <dims A!0 \<and> m<n \<longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
-      "tensor_1d_binary_search_n A a (if lookup_imp A [(L+R) div 2] < a
-                  then (((L+R) div 2)+1) 
-                  else L) 
-                (if lookup_imp A [(L+R) div 2 - 1] \<ge> a 
-                  then (((L+R) div 2)-1) 
-                  else R) X = Some n"
-    shows "tensor_1d_binary_search_n A a L R X = Some n"
-proof (induct rule: tensor_1d_binary_search_n.induct 
-    [where ?P="tensor_1d_binary_search_n A a L R X = Some n"], insert assms)*)
-
-lemma tensor_1d_binary_search_n_correct:
-  assumes "length (dims A) = 1" "length (vec_list A) > 0" "L\<ge>X"
-    "\<forall>m n. m<dims A!0 \<and> n <dims A!0 \<and> m<n \<longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
-  shows "(tensor_1d_binary_search_n A a L R X = (Some n))
-    = (n \<ge> L \<and> n \<le> R \<and> lookup_imp A [n] \<ge> a \<and> (\<forall>m<n. m\<ge>X \<longrightarrow> lookup_imp A [m] < a))"
-proof (induct rule: tensor_1d_binary_search_n.induct 
-    [where ?P="(\<lambda>A a L R X. (tensor_1d_binary_search_n A a L R X = (Some n)
-    = (n\<ge>L \<and> n \<le> R \<and> lookup_imp A [n] \<ge> a \<and> (\<forall>m<n. m\<ge>X \<longrightarrow> lookup_imp A [m] < a))))"])
-  case (1 A a L R X)
-
-  then show "(tensor_1d_binary_search_n A a L R X = Some n) =
-     (L \<le> n \<and> n \<le> R \<and> a \<le> lookup_imp A [n] \<and> (\<forall>m<n. X \<le> m \<longrightarrow> lookup_imp A [m] < a))"
-    
-
-
-
-qed
-
-
-fun tensor_1d_binary_search :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat option" where
-"tensor_1d_binary_search A a L = tensor_1d_binary_search_n A a L (dims A!0) L"
-
-function tensor_2d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
-"tensor_2d_binary_search_n A a L R X = (if L>R \<or> ((L+R) div 2) \<le> X then 0 else
-  (if L=R then (if lookup_imp A [L,0] \<ge> a \<and> lookup_imp A [L-1,0] \<le> a then Suc L else 0) else
-    (if lookup_imp A [(L+R) div 2,0] \<ge> a \<and> lookup_imp A [((L+R) div 2)-1,0] \<le> a then Suc ((L+R) div 2) else
-      tensor_2d_binary_search_n A a (if lookup_imp A [(L+R) div 2,0] < a then (((L+R) div 2)+1) else L) 
-        (if lookup_imp A [(L+R) div 2 - 1,0] > a then (((L+R) div 2)-1) else R) X)))"
-  by pat_completeness auto
-termination by (relation "Wellfounded.measure (\<lambda>(A,a,L,R,X). R-L)") auto
-
-definition tensor_2d_binary_search :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat" where
-"tensor_2d_binary_search A a L = (if lookup_imp A [L,0] \<ge> a then Suc L else
-  tensor_2d_binary_search_n A a L (dims A!0) L)"
 
 datatype ctermt = Get nat | Const real | Add ctermt ctermt | Mult ctermt ctermt | Uminus ctermt | Divide ctermt ctermt
 
@@ -421,11 +286,11 @@ function evalt :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt \<Rig
 | "evalt A n (ctNot c) = (\<not>(evalt A n c))"
 | "evalt A n (ctAnd c1 c2) = ((evalt A n c1) \<and> (evalt A n c2))"
 | "evalt A n (ctUntil x y c1 c2) 
-  = (if n \<ge> (dims A!0) \<or> y < 0 then False else 
-        (x > 0 \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
-        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 \<and> evalt A n c2)
-        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 
-          \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2)))"
+  = (if n \<ge> (dims A!0) \<or> y < 0 then False 
+     else (x > 0 \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
+       \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 \<and> evalt A n c2)
+       \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 
+         \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2)))"
   by pat_completeness auto
 termination by (relation "Wellfounded.measure (\<lambda>(A,n,c). size c + (dims A!0 - n))") auto 
 
