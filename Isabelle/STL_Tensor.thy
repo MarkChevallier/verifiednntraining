@@ -83,7 +83,212 @@ function tensor_1d_binary_search_n_alt :: "'a::linorder tensor \<Rightarrow> 'a 
             else hd Ls)]) 
            X)"
   by pat_completeness *)
-  
+
+(*
+  Offset is initial starting index
+  Start+offset is the current iteration's starting index
+  Width is number of *extra* steps to go beyond the start
+
+  Output is index of the first element (i.e. with least index) in (first dimension of) A greater than
+  or equal to the sought threshold a, such that it is within width steps of start+offset.
+
+  If width is zero (window of just one element):
+  - Check if element at start+offset is geq to sought a:
+    - If so, check if there is previous element (if start+offset > 0):
+      (looking for witness of threshold, so okay to look outside our area)
+      - If so, check if it is less than sought a:
+        - If so, return start+offset index
+        - Otherwise, return nothing (this element is not eligible threshold)
+      - Otherwise, return start+offset index (assume time before observations is less than every time)
+    - Otherwise, return nothing (this element does not meet the threshold)
+  In general:
+  - Check if midpoint (start+offset + width div 2) is geq to sought a:
+    - If so, recurse with same start and half width (left part including midpoint)
+    - Otherwise, recurse with midpoint+1 as start and half width-1, so even width gives 1 less (right part excluding midpoint - it's less so not a candidate)
+
+  Assumes:
+  - A is sorted (along its first dimension)
+  - A is not empty, otherwise not even with start and offset 0 will lookups work
+  - offset+start+width < length of A's first dimension
+
+  Could short-circuit in some situations of general case (check if midpoint is exactly what we want by chance).
+  May be better as another definition refining this one just for code-generation purposes?
+*)
+function (sequential) first_above_threshold_1D :: "('a :: linorder) tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat option"
+  where
+    "first_above_threshold_1D A a offset start 0 =
+      ( if lookup_imp A [offset + start] < a then None
+        else if offset + start = 0 then Some 0
+        else if lookup_imp A [nat.pred (offset + start)] < a then Some (offset + start)
+        else None)"
+  | "first_above_threshold_1D A a offset start width =
+      ( if a \<le> lookup_imp A [offset + start + (width div 2)]
+          then first_above_threshold_1D A a offset start (width div 2)
+          else first_above_threshold_1D A a offset (Suc (start + (width div 2))) ((nat.pred width) div 2))"
+  by pat_completeness auto
+termination first_above_threshold_1D
+  by (relation "Wellfounded.measure (\<lambda>(A, a, offset, start, width). width)") auto
+
+lemma even_div2_add:
+  "even n \<Longrightarrow> n div 2 + n div 2 = n"
+  by (metis add_cancel_right_right mult_2 mult_div_mod_eq parity_cases)
+
+lemma odd_div2_add:
+  "odd n \<Longrightarrow> n div 2 + n div 2 = nat.pred n"
+  by (cases n ; simp add: even_div2_add)
+
+lemma plus_nat_pred:
+  "y \<noteq> 0 \<Longrightarrow> x + nat.pred y = nat.pred (x + y)"
+  by (cases y ; simp)
+
+lemma nat_pred_Suc: (* Nat.nat.sel(2) is inaccessible for direct use *)
+  "nat.pred (Suc v) = v"
+  by simp
+
+lemma nat_pred_less:
+  "n \<noteq> 0 \<Longrightarrow> nat.pred n < n"
+  by (cases n ; simp)
+
+lemma first_above_threshold_1D_lower_bound:
+  assumes "first_above_threshold_1D A a offset start width = Some n"
+      and "length (dims A) = 1"
+      and "length (vec_list A) > 0"
+      and "offset + start + width < dims A ! 0"
+      and "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m < n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+    shows "offset + start \<le> n"
+  using assms
+proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D.induct)
+  case (1 A a offset start)
+  then show ?case
+    by simp (metis nle_le not_None_eq option.inject)
+next
+  case (2 A a offset start v)
+  then show ?case
+  proof (cases "a \<le> lookup_imp A [offset + start + Suc v div 2]")
+    case True
+    then show ?thesis using 2(1,3-7) by simp
+  next
+    case False
+    moreover have "offset + Suc (start + Suc v div 2) + nat.pred (Suc v) div 2 < dims A ! 0"
+    proof (cases "even v")
+      case True
+      then show ?thesis using 2(6) by (simp add: add.assoc even_div2_add)
+    next
+      case False
+      then show ?thesis using 2(6) by (simp only: add.assoc plus_nat.simps nat_pred_Suc)
+    qed
+    ultimately have "offset + Suc (start + Suc v div 2) \<le> n"
+      using 2 by (metis first_above_threshold_1D.simps(2))
+    then show ?thesis
+      by simp
+  qed
+qed
+
+lemma first_above_threshold_1D_upper_bound:
+  assumes "first_above_threshold_1D A a offset start width = Some n"
+      and "length (dims A) = 1"
+      and "length (vec_list A) > 0"
+      and "offset + start + width < dims A ! 0"
+      and "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m < n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+    shows "n \<le> offset + start + width"
+  using assms
+proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D.induct)
+  case (1 A a offset start)
+  then show ?case
+    by simp (metis nle_le not_None_eq option.inject)
+next
+  case (2 A a offset start v)
+  then show ?case
+  proof (cases "a \<le> lookup_imp A [offset + start + Suc v div 2]")
+    case True
+    then show ?thesis using 2 by simp linarith
+  next
+    case False
+    then show ?thesis using 2 by simp linarith
+  qed
+qed
+
+lemma first_above_threshold_1D_geq_threshold:
+  assumes "first_above_threshold_1D A a offset start width = Some n"
+      and "length (dims A) = 1"
+      and "length (vec_list A) > 0"
+      and "offset + start + width < dims A ! 0"
+      and "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m < n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+    shows "a \<le> lookup_imp A [n]"
+  using assms
+proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D.induct)
+  case (1 A a offset start)
+  then show ?case
+    by simp (metis linorder_not_less option.inject option.simps(3))
+next
+  case (2 A a offset start v)
+  then show ?case
+    by (cases "a \<le> lookup_imp A [offset + start + Suc v div 2]") simp_all
+qed
+
+lemma
+  assumes "first_above_threshold_1D A a offset start width = Some n"
+      and "length (dims A) = 1"
+      and "length (vec_list A) > 0"
+      and "offset + start + width < dims A ! 0"
+      and "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m < n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+    shows "\<And>m. \<lbrakk>offset \<le> m; m < n\<rbrakk> \<Longrightarrow> lookup_imp A [m] < a"
+  using assms
+proof (induct A a offset start width arbitrary: n rule: first_above_threshold_1D.induct)
+  case (1 A a offset start)
+
+  have c1: "\<not> (lookup_imp A [offset + start] < a)"
+    using 1(3) first_above_threshold_1D_geq_threshold by fastforce
+
+  show ?case
+  proof (cases "offset + start = 0")
+    case True
+    then show ?thesis using 1 c1 by simp
+  next
+    case c2: False
+
+    have c3: "lookup_imp A [nat.pred (offset + start)] < a"
+      using 1(3) c1 c2
+      by (simp del: add_eq_0_iff_both_eq_0 add_is_0) (metis option.discI)
+
+    have n_neq_0: "n \<noteq> 0"
+      using 1(2) c2 by linarith
+
+    have "lookup_imp A [m] \<le> lookup_imp A [nat.pred n]"
+    proof (cases "m = nat.pred n")
+      case True
+      then show ?thesis by simp
+    next
+      case False
+      then show ?thesis
+      proof (intro 1(7))
+        show "m < dims A ! 0"
+          using 1(2-7) first_above_threshold_1D_upper_bound by (meson order_less_imp_le order_less_le_trans)
+        show "nat.pred n < dims A ! 0"
+          using 1(3-7) n_neq_0 nat_pred_less first_above_threshold_1D_upper_bound by (meson order_less_imp_le order_less_le_trans)
+        show "m < nat.pred n"
+          using 1(2) False by (metis Suc_lessI n_neq_0 nat_pred_Suc not0_implies_Suc not_less_eq)
+      qed
+    qed
+    moreover have "lookup_imp A [nat.pred n] < a"
+      using 1(3) c3 c1 by (metis option.inject first_above_threshold_1D.simps(1))
+    ultimately show ?thesis
+      by simp
+  qed
+next
+  case (2 A a offset start v)
+  then show ?case
+  proof (cases "a \<le> lookup_imp A [offset + start + Suc v div 2]")
+    case True
+    then show ?thesis
+      using 2(1,3-9) by simp
+  next
+    case False
+    then show ?thesis
+      using 2(2-9) by simp
+  qed
+qed
+
 function tensor_1d_binary_search_n :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat option" where
 "tensor_1d_binary_search_n A a L R X = 
   (if L>R 
