@@ -268,25 +268,119 @@ next
   qed
 qed
 
+text\<open>Proofs that using @{const less_eq} instead of @{const less} in the sorting assumption is admissible\<close>
+experiment begin
+lemma
+  fixes A :: "('a :: linorder) tensor"
+  assumes "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m < n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+  shows "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m \<le> n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+  using assms by (case_tac "m = n" ; simp)
+lemma
+  fixes A :: "('a :: linorder) tensor"
+  assumes "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m \<le> n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+  shows "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m < n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+  using assms by (case_tac "m = n" ; simp)
+end
+
+lemma
+  assumes "length (dims A) = 1"
+      and "length (vec_list A) > 0"
+      and "offset + start + width < dims A ! 0"
+      and "\<And>m n. \<lbrakk>m < dims A ! 0; n < dims A ! 0; m \<le> n\<rbrakk> \<Longrightarrow> lookup_imp A [m] \<le> lookup_imp A [n]"
+      and "offset + start \<le> n"
+      and "n \<le> offset + start + width"
+      and "a \<le> lookup_imp A [n]"
+      and "\<And>m. \<lbrakk>offset \<le> m; m < n\<rbrakk> \<Longrightarrow> lookup_imp A [m] < a"
+    shows "first_above_threshold_1D A a offset start width = Some n"
+  using assms(3,5,6)
+proof (induct width arbitrary: start rule: less_induct)
+  case (less width)
+  then show ?case
+  proof (cases width)
+    case 0
+    then show ?thesis
+    apply simp
+    apply safe
+    apply simp_all
+      using assms(7) less.prems(2,3) apply fastforce
+    using less.prems(2,3) apply linarith
+    using assms(7) less.prems(2,3) apply fastforce
+    using less.prems apply fastforce
+    using assms(7) less.prems(2,3) apply auto[1]
+    using less.prems apply auto[1]
+    using assms(8) less.prems(2,3) by (metis add.right_neutral add_is_0 le_add1 nat_pred_less order_antisym plus_nat_pred)
+  next
+    case (Suc w)
+    then show ?thesis
+    proof (cases "a \<le> lookup_imp A [offset + start + Suc w div 2]")
+      case True
+
+      have "first_above_threshold_1D A a offset start (Suc w div 2) = Some n"
+      proof (rule less.hyps)
+        show "Suc w div 2 < width"
+          using Suc by simp
+        show "offset + start + Suc w div 2 < dims A ! 0"
+          using Suc less.prems by simp
+        show "offset + start \<le> n"
+          using less.prems by (meson leD le_add1 le_trans not_le_imp_less)
+        show "n \<le> offset + start + Suc w div 2"
+        using Suc True assms(8) by (metis ab_semigroup_add_class.add_ac(1) leD le_add1 not_le_imp_less)
+      qed
+      then show ?thesis
+        using Suc True by simp
+    next
+      case False
+
+      have "first_above_threshold_1D A a offset (Suc (start + Suc w div 2)) (w div 2) = Some n"
+      proof (rule less.hyps)
+        show "w div 2 < width"
+          using Suc by simp
+        show "offset + Suc (start + Suc w div 2) + w div 2 < dims A ! 0"
+          using Suc less.prems by simp
+        show "offset + Suc (start + Suc w div 2) \<le> n"
+        proof (rule ccontr)
+          assume "\<not> offset + Suc (start + Suc w div 2) \<le> n"
+          then have "n < offset + Suc (start + Suc w div 2)"
+            by simp
+          then have "n \<le> offset + start + Suc w div 2"
+            by simp
+          then have "lookup_imp A [n] \<le> lookup_imp A [offset + start + Suc w div 2]"
+            using assms(4) Suc less.prems(1) by force
+          then have "a \<le> lookup_imp A [offset + start + Suc w div 2]"
+            using assms(7) by simp
+          moreover have "lookup_imp A [offset + start + Suc w div 2] < a"
+            using False by simp
+          ultimately show False
+            by simp
+        qed
+        show "n \<le> offset + Suc (start + Suc w div 2) + w div 2"
+          using Suc less.prems(3) by linarith
+      qed
+      then show ?thesis
+        using Suc False by simp
+    qed
+  qed
+qed
+
 datatype ctermt = Get nat | Const real | Add ctermt ctermt | Mult ctermt ctermt | Uminus ctermt | Divide ctermt ctermt
 
-fun Teval :: "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" where
-"Teval (Get m) n A = lookup_imp A [n,m]"
-| "Teval (Const r) n A = r"
-| "Teval (Add c1 c2) n A = Teval c1 n A + Teval c2 n A"
-| "Teval (Mult c1 c2) n A = Teval c1 n A * Teval c2 n A"
-| "Teval (Uminus c) n A = -1 * (Teval c n A)"
-| "Teval (Divide c1 c2) n A = Teval c1 n A / Teval c2 n A"
+fun Teval :: "ctermt \<Rightarrow> real tensor \<Rightarrow> real tensor" where
+"Teval (Get m) A = iterated_subtensor A [m]"
+| "Teval (Const r) A = (unop (\<lambda>x. r) A)"
+| "Teval (Add c1 c2) A = (binop (+) (Teval c1 A) (Teval c2 A))"
+| "Teval (Mult c1 c2) A = (binop (*) (Teval c1 A) (Teval c2 A))"
+| "Teval (Uminus c) A = (unop (\<lambda>x. -1 * x) (Teval c A))"
+| "Teval (Divide c1 c2) A = (binop (/) (Teval c1 A) (Teval c2 A))"
 
-datatype constraintt = ctMu "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" ctermt real | ctNot constraintt 
+datatype constraintt = ctMu "ctermt \<Rightarrow> real tensor \<Rightarrow> real tensor" ctermt real | ctNot constraintt 
   | ctAnd constraintt constraintt | ctUntil real real constraintt constraintt
 
-function evalt :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt \<Rightarrow> bool" where
-"evalt A n (ctMu f ct r) = ((f ct n A) > r)"
-| "evalt A n (ctNot c) = (\<not>(evalt A n c))"
-| "evalt A n (ctAnd c1 c2) = ((evalt A n c1) \<and> (evalt A n c2))"
+function evalt :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt \<Rightarrow> bool tensor" where
+"evalt A n (ctMu f ct r) = (unop (\<lambda>x. (>) x r) (f ct (iterated_subtensor A [n])))"
+| "evalt A n (ctNot c) = unop (Not) (evalt A n c)"
+| "evalt A n (ctAnd c1 c2) = binop (\<and>) (evalt A n c1) (evalt A n c2)"
 | "evalt A n (ctUntil x y c1 c2) 
-  = (if n \<ge> (dims A!0) \<or> y < 0 then False 
+  = (if n \<ge> (dims A!0) \<or> (y < 0 then False 
      else (x > 0 \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 \<and> evalt A n c2)
        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 
