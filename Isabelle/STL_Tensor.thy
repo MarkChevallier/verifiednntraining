@@ -364,29 +364,59 @@ qed
 
 datatype ctermt = Get nat | Const real | Add ctermt ctermt | Mult ctermt ctermt | Uminus ctermt | Divide ctermt ctermt
 
-fun Teval :: "ctermt \<Rightarrow> real tensor \<Rightarrow> real tensor" where
-"Teval (Get m) A = iterated_subtensor A [m]"
-| "Teval (Const r) A = (unop (\<lambda>x. r) A)"
-| "Teval (Add c1 c2) A = (binop (+) (Teval c1 A) (Teval c2 A))"
-| "Teval (Mult c1 c2) A = (binop (*) (Teval c1 A) (Teval c2 A))"
-| "Teval (Uminus c) A = (unop (\<lambda>x. -1 * x) (Teval c A))"
-| "Teval (Divide c1 c2) A = (binop (/) (Teval c1 A) (Teval c2 A))"
+fun Teval :: "ctermt \<Rightarrow> nat tensor \<Rightarrow> real tensor \<Rightarrow> real tensor" where
+"Teval (Get m) N A = unop (\<lambda>n. lookup_imp A [n,m]) N"
+| "Teval (Const r) N A = (unop (\<lambda>x. r) (iterated_subtensor A [0,0]))"
+| "Teval (Add c1 c2) N A = (binop (+) (Teval c1 N A) (Teval c2 N A))"
+| "Teval (Mult c1 c2) N A = (binop (*) (Teval c1 N A) (Teval c2 N A))"
+| "Teval (Uminus c) N A = (unop (\<lambda>x. -1 * x) (Teval c N A))"
+| "Teval (Divide c1 c2) N A = (binop (/) (Teval c1 N A) (Teval c2 N A))"
 
-datatype constraintt = ctMu "ctermt \<Rightarrow> real tensor \<Rightarrow> real tensor" ctermt real | ctNot constraintt 
+fun Teval' :: "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" where
+"Teval' (Get m) n A = lookup_imp A [n,m]"
+| "Teval' (Const r) n A = r"
+| "Teval' (Add c1 c2) n A = (Teval' c1 n A) + (Teval' c2 n A)"
+| "Teval' (Mult c1 c2) n A = (Teval' c1 n A) * (Teval' c2 n A)"
+| "Teval' (Uminus c) n A = -1 * Teval' c n A"
+| "Teval' (Divide c1 c2) n A = (Teval' c1 n A) / (Teval' c2 n A)"
+
+definition Teval2 :: "ctermt \<Rightarrow> nat tensor \<Rightarrow> real tensor \<Rightarrow> real tensor" where
+"Teval2 ct N A = unop (\<lambda>n. Teval' ct n A) N" (* <- should be the nth subtensor of the original A *)
+
+datatype constraintt = ctMu "ctermt \<Rightarrow> nat tensor \<Rightarrow> real tensor \<Rightarrow> real tensor" ctermt real | ctNot constraintt 
   | ctAnd constraintt constraintt | ctUntil real real constraintt constraintt
 
-function evalt :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt \<Rightarrow> bool tensor" where
-"evalt A n (ctMu f ct r) = (unop (\<lambda>x. (>) x r) (f ct (iterated_subtensor A [n])))"
-| "evalt A n (ctNot c) = unop (Not) (evalt A n c)"
-| "evalt A n (ctAnd c1 c2) = binop (\<and>) (evalt A n c1) (evalt A n c2)"
-| "evalt A n (ctUntil x y c1 c2) 
-  = (if n \<ge> (dims A!0) \<or> (y < 0 then False 
+datatype constraintt' = ctMu' "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" ctermt real | ctNot' constraintt' 
+  | ctAnd' constraintt' constraintt' | ctUntil' real real constraintt' constraintt'
+
+function evalt' :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt' \<Rightarrow> bool" where
+"(evalt' A n (ctMu' f ct r)) = ((f ct n A) > r)"
+| "evalt' A n (ctNot' c) = (\<not>(evalt' A n c))"
+| "evalt' A n (ctAnd' c1 c2) = ((evalt' A n c1) \<and> (evalt' A n c2))"
+| "evalt' A n (ctUntil' x y c1 c2) 
+  = (if n \<ge> (dims A!0) \<or> (y < 0) then False 
+     else (x > 0 \<and> evalt' A (n+1) (ctUntil' (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
+       \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt' A n c1 \<and> evalt' A n c2)
+       \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt' A n c1 
+         \<and> evalt' A (n+1) (ctUntil' (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2)))"
+  by pat_completeness auto
+termination by (relation "Wellfounded.measure (\<lambda>(A,n,c). size c + (dims A!0 - n))") auto
+
+definition evalt2 :: "real tensor \<Rightarrow> constraintt' \<Rightarrow> bool tensor" where
+"evalt2 A c = unop (\<lambda>n. evalt' A n c) (unop (\<lambda>x. 0::nat) (iterated_subtensor A [0,0]))" (* <- should be the nth subtensor of the original A *)
+
+function evalt :: "real tensor \<Rightarrow> nat tensor \<Rightarrow> constraintt \<Rightarrow> bool tensor" where
+"evalt A N (ctMu f ct r) = (unop (\<lambda>x. (>) x r) (f ct N A))"
+| "evalt A N (ctNot c) = unop (Not) (evalt A N c)"
+| "evalt A N (ctAnd c1 c2) = binop (\<and>) (evalt A N c1) (evalt A N c2)"
+| "evalt A N (ctUntil x y c1 c2) 
+  = (if n \<ge> (dims A!0) \<or> (y < 0) then False (iterated_subtensor A [0,0]))
      else (x > 0 \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 \<and> evalt A n c2)
        \<or> (x \<le> 0 \<and> y \<ge> 0 \<and> evalt A n c1 
          \<and> evalt A (n+1) (ctUntil (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2)))"
   by pat_completeness auto
-termination by (relation "Wellfounded.measure (\<lambda>(A,n,c). size c + (dims A!0 - n))") auto 
+termination by (relation "Wellfounded.measure (\<lambda>(A,n,c). size c + (dims A!0 - n))") auto
 
 lemma evalt_Until_works:
   assumes "valid_signal_tensor A"
