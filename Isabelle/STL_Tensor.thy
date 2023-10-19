@@ -16,6 +16,155 @@ TENSOR
 etc etc
 *)
 
+(* subtensor_dim; returns the nth subtensor (starting at 0) of dimension d from tensor A
+-- for example, if A is a nat tensor with dims [2,2,3] of
+|1 2|  |5 6|  |9  10|
+|3 4|  |7 8|  |11 12|*
+if subtensor_dim A 2 2 is called, you get the 2d subtensor marked with * above
+*) 
+definition subtensor_dim :: "'a tensor \<Rightarrow> nat \<Rightarrow> 'a tensor" where
+"subtensor_dim A n = (if (\<forall>m<length (dims A). dims A!m > 0) \<and> length (dims A) > 1 \<and> n<(dims A!(length (dims A) - 1))
+  then tensor_from_vec_list (take (length (dims A) - 1) (dims A))
+    (take (prod_list (take (length (dims A) - 1) (dims A))) 
+      (drop (n * (prod_list (take (length (dims A) - 1) (dims A)))) (vec_list A)))
+  else tensor_from_vec_list [0] [])"
+
+lemma prod_list_PROD:
+  shows "prod_list A = (\<Prod>i<length A. A!i)"
+proof (induct A)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons x xs)
+  then have 1:"(\<Prod>i<length (x#xs). (x#xs)!i) = x * (\<Prod>i<length xs. xs!i)"
+    by (simp add: lessThan_Suc_atMost prod.atMost_shift)
+  then have "prod_list (x#xs) = x * prod_list xs"
+    by simp
+  then show ?case
+    using 1 Cons
+    by argo
+qed
+
+lemma prod_list_PROD_take:
+  assumes "d\<le>length A"
+  shows "prod_list (take d A) = (\<Prod>i<d. A!i)"
+proof -
+  have "length (take d A) = d"
+    using assms(1)
+    by auto
+  then show ?thesis
+    using prod_list_PROD lessThan_iff nth_take prod.cong
+    by metis
+qed
+
+lemma PROD_pos_list_take:
+  fixes A :: "nat list"
+  assumes "\<forall>n<length A. A!n > 0" "d < length A"
+  shows "(\<Prod>i<d. A!i) \<le> (\<Prod>i<length A. A!i)"
+proof -
+  have "{..<d}\<union>{d..<length A} = {..<length A} \<and> finite {..<d} \<and> finite {d..<length A}
+    \<and> {..<d} \<inter> {d..<length A} = {}"
+    using assms(2)
+    by fastforce
+  then have 1:"(\<Prod>i<length A. A!i) = (\<Prod>i<d. A!i) * (\<Prod>i\<in>{d..<length A}. A!i)"
+    using prod.union_disjoint
+    by metis
+  have "(\<Prod>i\<in>{d..<length A}. A!i) \<ge> 1"
+    using assms(1) atLeastLessThan_iff less_imp_neq less_one linorder_le_less_linear prod_ge_1
+    by metis
+  then show ?thesis
+    using 1
+    by force
+qed
+
+lemma subtensor_dim_valid[code]:
+  "Rep_tensor (subtensor_dim A n) = (if (\<forall>n<length (dims A). dims A!n > 0)
+    \<and> length (dims A) > 1 \<and> n<dims A!(length (dims A) - 1) 
+    then (take (length (dims A) - 1) (dims A), 
+      IArray (take (prod_list (take (length (dims A) - 1) (dims A))) 
+        (drop (n * (prod_list (take (length (dims A) - 1) (dims A)))) (vec_list A))))
+    else ([0],(IArray [])))"
+proof (cases "(\<forall>n<length (dims A). dims A!n > 0)
+    \<and> length (dims A) > 1 \<and> n<dims A!(length (dims A) - 1)")
+  case True
+  then show ?thesis
+  proof -
+    have 0:"length (dims A) - 1 < length (dims A)"
+      using True 
+      by force
+    have 1:"prod_list (dims A) = prod_list (take (length (dims A) - 1) (dims A)) * dims A!(length (dims A) - 1)"
+    proof -
+      have "{..<length (dims A) - 1}\<union>{length (dims A) - 1} = {..<length (dims A)} 
+        \<and> {..<length (dims A) - 1}\<inter>{length (dims A) - 1} = {} \<and> finite {..<length (dims A) - 1}
+        \<and> finite {length (dims A) - 1}"
+        using True 
+        by fastforce
+      then have "prod (\<lambda>i. (dims A)!i) {..<length (dims A)} = prod (\<lambda>i. (dims A)!i) {..<length (dims A) - 1}
+        * prod (\<lambda>i. (dims A)!i) {length (dims A) - 1}"
+        using prod.union_disjoint 
+        by metis
+      then have "prod_list (dims A) = prod_list (take (length (dims A) - 1) (dims A)) 
+        * prod (\<lambda>i. (dims A)!i) {length (dims A) - 1}"
+        using prod_list_PROD prod_list_PROD_take 0 less_imp_le_nat
+        by metis
+      then show ?thesis
+        by simp
+    qed
+    have 2:"subtensor_dim A n = tensor_from_vec_list (take (length (dims A) - 1) (dims A))
+      (take (prod_list (take (length (dims A) - 1) (dims A))) 
+      (drop (n * (prod_list (take (length (dims A) - 1) (dims A)))) (vec_list A)))"
+      using True subtensor_dim_def
+      by meson
+    have "prod_list (dims A) > 0"
+      using True in_set_conv_nth less_nat_zero_code prod_list_zero_iff gr0I
+      by metis
+    then have "prod_list (take (length (dims A) - 1) (dims A)) * n 
+        < prod_list (take (length (dims A) - 1) (dims A)) * (dims A!(length (dims A) - 1))"
+      using 1 True 0 linordered_comm_semiring_strict_class.comm_mult_strict_left_mono 
+        zero_less_mult_pos2
+      by metis
+    then have "prod_list (take (length (dims A) - 1) (dims A)) * (Suc n) 
+        \<le> prod_list (take (length (dims A) - 1) (dims A)) * (dims A!(length (dims A) - 1))"
+      using Suc_leI True mult_le_mono2 
+      by blast
+    then have "prod_list (take (length (dims A) - 1) (dims A)) * (Suc n) 
+        \<le> prod_list (dims A)"
+      using 1 
+      by argo
+    then have "prod_list (take (length (dims A) - 1) (dims A)) * n 
+        \<le> prod_list (dims A) - prod_list (take (length (dims A) - 1) (dims A))"
+      by fastforce
+    then have "length ((drop (n * (prod_list (take (length (dims A) - 1) (dims A)))) (vec_list A)))
+      \<ge> prod_list (take (length (dims A) - 1) (dims A))"
+      by (metis \<open>prod_list (take (order A - 1) (dims A)) * Suc n \<le> prod_list (dims A)\<close> add_le_imp_le_diff length_drop mult.commute mult_Suc_right tensor_dim_vec_list_invariant)
+    then have "length (take (prod_list (take (length (dims A) - 1) (dims A))) 
+      (drop (n * (prod_list (take (length (dims A) - 1) (dims A)))) (vec_list A)))
+      = prod_list (take (length (dims A) - 1) (dims A))"
+      by simp
+    then have "IArray.length (IArray (take (prod_list (take (length (dims A) - 1) (dims A))) 
+      (drop (n * (prod_list (take (length (dims A) - 1) (dims A)))) (vec_list A))))
+      = prod_list (take (length (dims A) - 1) (dims A))"
+      by simp
+    then show ?thesis    
+      using invertability_condition tensor_from_vec_list_def 2 True
+      by metis
+  qed
+next
+  case False
+  then show ?thesis
+    using subtensor_dim_def tensor_from_vec_list_def  list.size(3) tensor_from_list_simp 
+      tensor_rep_invertible
+    by metis
+qed
+
+definition count_tensor :: "nat \<Rightarrow> nat tensor" where
+"count_tensor n = tensor_from_vec_list [(Suc n)] [0..<(Suc n)]"
+
+lemma count_tensor_valid[code]:
+  "Rep_tensor (count_tensor n) = ([Suc n], IArray [0..<Suc n])"
+  by (simp add: invertability_condition tensor_from_vec_list_def count_tensor_def)
+
+(* proves that a non empty tensor cannot have a dimension of 0 in any of its dimensions *)
 lemma nonempty_tensor_dims_not_0:
   fixes A :: "'a tensor" and n m :: nat
   assumes "length (dims A) = n" "m<n" "length (vec_list A) > 0"
@@ -39,6 +188,7 @@ proof -
     by argo
 qed
 
+(* defines a valid_signal_tensor as one with dimension 2, nonempty, and sorted by its first dimension *)
 definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
 "valid_signal_tensor A = 
   (length (dims A) = 2 \<and> length (vec_list A) > 0
@@ -47,12 +197,6 @@ definition valid_signal_tensor :: "real tensor \<Rightarrow> bool" where
 (* if you use tensor_1d_binary_search_n starting with L = 0 and R = dims A!0-1, this should return
 (Suc n) where the lookup for n-1 \<le> a and for n \<ge> a; it returns (Suc 0) if lookup for 0 \<ge> a. 
 It should return 0 if no such n exists. *) 
-
-definition interval_start_1d :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
-"interval_start_1d A a X n = (n \<ge> X \<and> lookup_imp A [n] \<ge> a \<and> (lookup_imp A [n-1] \<le> a \<or> n=X))"
-
-definition interval_start_2d :: "'a::linorder tensor \<Rightarrow> 'a \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
-"interval_start_2d A a X n = (n \<ge> X \<and> lookup_imp A [n,0] \<ge> a \<and> (lookup_imp A [n-1,0] \<le> a \<or> n=X))"
 
 (*
   Offset is initial starting index
@@ -362,8 +506,17 @@ proof (induct width arbitrary: start rule: less_induct)
   qed
 qed
 
+
+(* the ctermt type for embedding expressions *)
 datatype ctermt = Get nat | Const real | Add ctermt ctermt | Mult ctermt ctermt | Uminus ctermt | Divide ctermt ctermt
 
+(* Teval is the default real tensor calculator using ctermt's 
+N here is a nat tensor of dimension equal to the batch dimension(s) of A, containing
+the time index to be used for each batch; in the event where we assume an equal signal, we could use 
+a nat n instead
+
+Note the odd way of defining constant tensor r. There must be a better way.
+*)
 fun Teval :: "ctermt \<Rightarrow> nat tensor \<Rightarrow> real tensor \<Rightarrow> real tensor" where
 "Teval (Get m) N A = unop (\<lambda>n. lookup_imp A [n,m]) N"
 | "Teval (Const r) N A = (unop (\<lambda>x. r) (iterated_subtensor A [0,0]))"
@@ -372,6 +525,11 @@ fun Teval :: "ctermt \<Rightarrow> nat tensor \<Rightarrow> real tensor \<Righta
 | "Teval (Uminus c) N A = (unop (\<lambda>x. -1 * x) (Teval c N A))"
 | "Teval (Divide c1 c2) N A = (binop (/) (Teval c1 N A) (Teval c2 N A))"
 
+(* Teval' is the non tensor based calculation for Teval. It is intended to be used with Teval2,
+which uses unop to turn it into a tensor result. 
+
+Note that the nat\<times>nat tensor N' in Teval2 has the time index as its second element and the batch 
+index as its first*)
 fun Teval' :: "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" where
 "Teval' (Get m) n A = lookup_imp A [n,m]"
 | "Teval' (Const r) n A = r"
@@ -380,8 +538,14 @@ fun Teval' :: "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> 
 | "Teval' (Uminus c) n A = -1 * Teval' c n A"
 | "Teval' (Divide c1 c2) n A = (Teval' c1 n A) / (Teval' c2 n A)"
 
-definition Teval2 :: "ctermt \<Rightarrow> nat tensor \<Rightarrow> real tensor \<Rightarrow> real tensor" where
-"Teval2 ct N A = unop (\<lambda>n. Teval' ct n A) N" (* <- should be the nth subtensor of the original A *)
+definition Teval2 :: "ctermt \<Rightarrow> (nat\<times>nat) tensor \<Rightarrow> real tensor \<Rightarrow> real tensor" where
+"Teval2 ct N' A = unop (\<lambda>n. Teval' ct (snd n) (subtensor_dim A (fst n))) N'"
+
+(* the following datatypes are used to embed the STL constraints. Note that the first (constrainttt)
+is intended to be used if we use the tensor evaluation eval, and the second if we use eval' 
+
+the difference between the two is just down to how the ctMu expression is evaluated
+*)
 
 datatype constraintt = ctMu "ctermt \<Rightarrow> nat tensor \<Rightarrow> real tensor \<Rightarrow> real tensor" ctermt real | ctNot constraintt 
   | ctAnd constraintt constraintt | ctUntil real real constraintt constraintt
@@ -389,10 +553,32 @@ datatype constraintt = ctMu "ctermt \<Rightarrow> nat tensor \<Rightarrow> real 
 datatype constraintt' = ctMu' "ctermt \<Rightarrow> nat \<Rightarrow> real tensor \<Rightarrow> real" ctermt real | ctNot' constraintt' 
   | ctAnd' constraintt' constraintt' | ctUntil' real real constraintt' constraintt'
 
+(* STL truth evaluation functions. As before, the "prime" version of the function is intended to act
+elementwise and then wrapped in the evalt2 function. *)
+
 function evalt' :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt' \<Rightarrow> bool" where
+(* f below is intended to be Teval' *)
 "(evalt' A n (ctMu' f ct r)) = ((f ct n A) > r)"
 | "evalt' A n (ctNot' c) = (\<not>(evalt' A n c))"
 | "evalt' A n (ctAnd' c1 c2) = ((evalt' A n c1) \<and> (evalt' A n c2))"
+(* the Until constraint is complicated. I will go through it in detail.
+Parameters are: x, the start point of the time interval we are examining
+y, the end point of the time interval we are examining, c1 c2, the constraints
+NOTE: the interval is measured from the point at which the Until is first looked at.
+So if (Until 5 10 c1 c2) is a constraint, and it is first examined when time is 5.6, then the 
+interval in absolute time is 10.6 to 15.6
+
+(if n \<ge> (dims A!0) \<or> (y < 0) then False <- if we are out of the time index or past the interval, we return False
+OTHERWISE IF
+(x > 0 \<and> evalt' A (n+1) (ctUntil' (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
+This clause is saying if we are not in the window yet (x>0), check the next time entry.
+NOTE: When we move to check the next time entry, we shift the relative interval that Until is examining
+by the difference between the next time index and this current one: lookup_imp A [n,0] is the time at index n
+OR (x \<le> 0 \<and> y \<ge> 0 \<and> evalt' A n c1 \<and> evalt' A n c2) we are IN the interval and both constraints are TRUE
+(this is as per STLCGs implementation of Until, which is really a release)
+OR (x \<le> 0 \<and> y \<ge> 0 \<and> evalt' A n c1 
+         \<and> evalt' A (n+1) (ctUntil' (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2)))"
+we are in the interval, c1 is true, and Until is true for the next time interval *)
 | "evalt' A n (ctUntil' x y c1 c2) 
   = (if n \<ge> (dims A!0) \<or> (y < 0) then False 
      else (x > 0 \<and> evalt' A (n+1) (ctUntil' (x+lookup_imp A [n,0]-lookup_imp A [n+1,0]) (y+lookup_imp A [n,0]-lookup_imp A [n+1,0]) c1 c2))
@@ -402,8 +588,10 @@ function evalt' :: "real tensor \<Rightarrow> nat \<Rightarrow> constraintt' \<R
   by pat_completeness auto
 termination by (relation "Wellfounded.measure (\<lambda>(A,n,c). size c + (dims A!0 - n))") auto
 
-definition evalt2 :: "real tensor \<Rightarrow> constraintt' \<Rightarrow> bool tensor" where
-"evalt2 A c = unop (\<lambda>n. evalt' A n c) (unop (\<lambda>x. 0::nat) (iterated_subtensor A [0,0]))" (* <- should be the nth subtensor of the original A *)
+(* Note that the nat\<times>nat tensor N' in Teval2 has the time index as its second element and the batch 
+index as its first *)
+definition evalt2 :: "real tensor \<Rightarrow> (nat\<times>nat) tensor \<Rightarrow> constraintt' \<Rightarrow> bool tensor" where
+"evalt2 A N' c = unop (\<lambda>n. evalt' (subtensor_dim A (fst n)) (snd n) c) N'"
 
 function evalt :: "real tensor \<Rightarrow> nat tensor \<Rightarrow> constraintt \<Rightarrow> bool tensor" where
 "evalt A N (ctMu f ct r) = (unop (\<lambda>x. (>) x r) (f ct N A))"
@@ -498,7 +686,7 @@ proof -
           \<or> (x+lookup_imp A [(dA - 1 - k),0] \<le> lookup_imp A [n',0] \<and> y+lookup_imp A [(dA - 1 - k),0] \<ge> lookup_imp A [n',0]
             \<and> evalt A n' c1)))"
         using Suc
-        sledgehammer
+        
 
 
 
